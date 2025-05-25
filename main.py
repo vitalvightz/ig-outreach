@@ -22,12 +22,18 @@ def run_outreach():
     core_message = "One of our fighters went 7-0 post-surgery after one tweak added 8% more power per strike. Want me to send over how?"
 
     for i, row in enumerate(data):
-        if not row.get("Message"):
-            name = row.get("Name", "fighter")
-            notes = row.get("Notes", "").strip()
-            prompt = (
-                f"Write a casual but calm Instagram DM to {name}. Use this note: '{notes}' as the human hook. Then naturally transition into this offer: '{core_message}'. Tone should match a smart, grounded performance coach."
-            )
+    if not row.get("Message"):
+        name = row.get("Name", "fighter")
+        notes = row.get("Notes", "").strip()
+
+        prompt = (
+            f"Write a short Instagram DM to {name}. Start with a calm, observational line based on this note: '{notes}'. "
+            "Then transition naturally into this message: "
+            "'One of our guys went 7–0 post-surgery after applying one tweak that added 8% more power per strike. Want me to send over how?' "
+            "Avoid hype, emojis, or anything that sounds like coaching or team talk. No 'we', or 'my client'. "
+            "Keep it sharp, understated, and quietly credible — like someone dropping a gem behind the scenes, that leads to extreme value in the eyes of recipient."
+        )
+
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
