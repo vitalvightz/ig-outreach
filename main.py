@@ -29,7 +29,7 @@ def run_outreach():
                 f"Write a casual but calm Instagram DM to {name}. Use this note: '{notes}' as the human hook. Then naturally transition into this offer: '{core_message}'. Tone should match a smart, grounded performance coach."
             )
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 max_tokens=100
