@@ -19,6 +19,7 @@ def run_outreach():
     # 3. Open sheet and fetch records
     sheet = client_sheet.open("IG DM AUTOMATION").sheet1
     data = sheet.get_all_records()
+    print(f"Rows pulled: {len(data)}")
 
     # 4. Set OpenAI client
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -44,6 +45,7 @@ def run_outreach():
             )
 
             message = response.choices[0].message.content.strip()
+            print(f"Updating row {i + 2} with message: {message}")
             sheet.update_cell(i + 2, 4, message)
 
     print("All new messages generated.")
