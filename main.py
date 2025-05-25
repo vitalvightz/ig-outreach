@@ -47,5 +47,6 @@ def run_outreach():
             message = response.choices[0].message.content.strip()
             print(f"Updating row {i + 2} with message: {message}")
             sheet.update_cell(i + 2, 4, message)
+            run_outreach()
 
     print("All new messages generated.")
