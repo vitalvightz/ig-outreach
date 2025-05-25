@@ -1,6 +1,6 @@
 import gspread
 import os
-from openai import OpenAI
+import openai
 from oauth2client.service_account import ServiceAccountCredentials
 
 def run_outreach():
@@ -11,16 +11,16 @@ def run_outreach():
     client_sheet = gspread.authorize(creds)
 
     # 2. Open your sheet
-    sheet = client_sheet.open("IG DM AUTOMATION").sheet1  # Name of your Google Sheet
+    sheet = client_sheet.open("IG DM AUTOMATION").sheet1
     data = sheet.get_all_records()
 
-    # 3. Set your OpenAI API key and client
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    # 3. Set OpenAI API key
+    openai.api_key = os.environ["OPENAI_API_KEY"]
 
-    # 4. Fixed part of the DM offer
+    # 4. DM offer
     core_message = "One of our fighters went 7-0 post-surgery after one tweak added 8% more power per strike. Want me to send over how?"
 
-    # 5. Loop through rows, generate messages where missing
+    # 5. Loop through rows
     for i, row in enumerate(data):
         if not row.get("Message"):
             name = row.get("Name", "fighter")
@@ -30,8 +30,8 @@ def run_outreach():
                 f"Write a casual Instagram DM to {name}. Include a short human opening based on this: '{notes}'. Then naturally transition into this offer: '{core_message}'. Make sure it flows well and sounds real."
             )
 
-            response = client.chat.completions.create(
-                model="gpt-4",
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 max_tokens=100
@@ -39,7 +39,7 @@ def run_outreach():
 
             message = response.choices[0].message.content.strip()
 
-            # Assumes Message is in column D (4th column)
+            # Update message column (4th column)
             sheet.update_cell(i + 2, 4, message)
 
     print("All new messages generated.")
