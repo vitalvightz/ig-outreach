@@ -1,4 +1,4 @@
- import openai
+import openai
 import gspread
 import os
 import json
