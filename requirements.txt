@@ -2,3 +2,4 @@ flask
 openai
 gspread
 oauth2client
+beautifulsoup4
