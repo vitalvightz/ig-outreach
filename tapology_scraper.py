@@ -1,89 +1,77 @@
-import os
-import json
-import time
-import random
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from playwright.sync_api import sync_playwright
+# tapology_scraper.py
 
-# Authenticate with Google Sheets
-def connect_to_sheet():
+import os
+import asyncio
+import json
+import gspread
+from playwright.async_api import async_playwright
+from oauth2client.service_account import ServiceAccountCredentials
+
+# Google Sheets Setup
+def setup_google_sheet():
     creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-    with open("creds.json", "w") as f:
+    with open("gcreds.json", "w") as f:
         f.write(creds_json)
 
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
+    creds = ServiceAccountCredentials.from_json_keyfile_name("gcreds.json", scope)
     client = gspread.authorize(creds)
     sheet = client.open("IG LEAD SCRAPER - TAPOLOGY").worksheet("IG LEAD SCRAPER - TAPOLOGY")
     return sheet
 
-# Extract event URLs from the promotion page
-def get_event_links(page, limit=5):
-    page.goto("https://www.tapology.com/fightcenter/promotions/55-cage-warriors-fighting-championship-cwfc")
-    page.wait_for_timeout(3000)
-    return [a.get_attribute("href") for a in page.query_selector_all(".fightCard a.name")][:limit]
+# Scraper function
+async def scrape_events():
+    PROMOTION_URLS = [
+        "https://www.tapology.com/fightcenter/promotions/55-cage-warriors-fighting-championship-cwfc",
+        "https://www.tapology.com/fightcenter/promotions/2673-polaris-ppjji",
+        "https://www.tapology.com/fightcenter/promotions/1964-okatgon-mma-okmma",
+        "https://www.tapology.com/fightcenter/promotions/2605-glory-kickboxing-gk",
+        "https://www.tapology.com/fightcenter/promotions/2484-matchroom-boxing-mb",
+        "https://www.tapology.com/fightcenter/promotions/3272-ultimate-boxxer-ub",
+        "https://www.tapology.com/fightcenter/promotions/1815-legacy-fighting-alliance-lfa",
+        "https://www.tapology.com/fightcenter/promotions/1782-brave-combat-federation-bcf",
+        "https://www.tapology.com/fightcenter/promotions/1979-golden-boy-promotions-gbp"
+    ]
 
-# Scrape fighters from an event page
-def scrape_event_data(page, url):
-    page.goto(url)
-    time.sleep(random.uniform(2, 4))
-    event_name = page.query_selector("h1")
-    fight_blocks = page.query_selector_all(".fightCard")
-    fighters_data = []
+    sheet = setup_google_sheet()
+    print("Connected to Google Sheet.")
 
-    for fight in fight_blocks:
-        try:
-            fighter_tags = fight.query_selector_all(".fightCardFighterBout a")
-            if len(fighter_tags) != 2:
-                continue
-            fighter_1 = fighter_tags[0].inner_text().strip()
-            fighter_2 = fighter_tags[1].inner_text().strip()
-            record_tag = fight.query_selector(".record")
-            record = record_tag.inner_text().strip() if record_tag else "N/A"
-            fight_date = page.query_selector(".details .info .date")
-            fight_date = fight_date.inner_text().strip() if fight_date else "N/A"
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-            fighters_data.append([
-                fighter_1,
-                record,
-                fight_date,
-                fighter_2,
-                "",
-                "",
-                "",
-                event_name.inner_text().strip() if event_name else "",
-                url
-            ])
-        except:
-            continue
+        for promo_url in PROMOTION_URLS:
+            print(f"Fetching: {promo_url}")
+            await page.goto(promo_url)
+            await page.wait_for_timeout(3000)
+            if await page.is_visible("button:has-text(\"Accept\")"):
+                await page.click("button:has-text(\"Accept\")")
 
-    return fighters_data
+            events = await page.query_selector_all(".fcListing a.name")
+            event_links = [await e.get_attribute("href") for e in events if e]
+            event_links = list(filter(None, event_links))[:5]  # Limit to 5 events
 
-# Main function to run scraper and upload to Google Sheets
-def run_scraper():
-    sheet = connect_to_sheet()
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+            for event_link in event_links:
+                event_url = f"https://www.tapology.com{event_link}"
+                await page.goto(event_url)
+                await page.wait_for_timeout(3000)
+                print(f"Visiting event: {event_url}")
 
-        base_url = "https://www.tapology.com"
-        event_paths = get_event_links(page, limit=5)
-        all_fighter_data = []
+                fighter_elems = await page.query_selector_all("a.fightCardFighterBoutLink")
+                for elem in fighter_elems:
+                    name = (await elem.inner_text()).strip()
+                    href = await elem.get_attribute("href")
+                    full_url = f"https://www.tapology.com{href}" if href else ""
 
-        for path in event_paths:
-            if path:
-                url = base_url + path
-                all_fighter_data.extend(scrape_event_data(page, url))
+                    if name and href:
+                        sheet.append_row([name, full_url])
+                        print(f"Added: {name} - {full_url}")
 
-        if all_fighter_data:
-            sheet.append_rows(all_fighter_data, value_input_option="USER_ENTERED")
-            print(f"Scraped and saved {len(all_fighter_data)} fighter entries.")
-        else:
-            print("No data found.")
+        await browser.close()
 
-        browser.close()
+    print("Done scraping.")
 
 if __name__ == "__main__":
-    run_scraper()
+    asyncio.run(scrape_events())
