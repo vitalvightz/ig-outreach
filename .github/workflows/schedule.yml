@@ -39,11 +39,3 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Install Playwright Browsers
-        run: python -m playwright install
-
-      - name: Run Tapology Scraper
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-        run: python tapology_scraper.py
