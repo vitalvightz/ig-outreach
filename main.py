@@ -34,9 +34,9 @@ def run_outreach():
             notes = row.get("Notes", "").strip()
 
             prompt = (
-                f"You're a calm, sharp performance director writing an Instagram DM to {name}. "
-                f"Use this note about fighter: '{notes}' as the natural human opening. Then transition smoothly into this message: '{core_message}'. "
-                f"Keep the message between 35-50 words. Never use 'I heard'. Tone should be confident, grounded, and never salesy or overhyped."
+                f"Write a calm, confident Instagram DM to {name}. Start with a short, natural line based on this note about them: '{notes}'. "
+                f"Then flow into this message: '{core_message}', making sure it feels like a natural continuation — not forced or robotic. "
+                f"Keep the tone grounded, non-salesy, and the message between 40–50 words."
             )
 
             # Initial message generation
