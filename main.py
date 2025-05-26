@@ -21,19 +21,19 @@ def run_outreach():
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     core_message = "One of our fighters went 7-0 post-surgery after one tweak added 8% more power per strike. Want me to send over how?"
 
-   for i, row in enumerate(data):
-    if not row.get("Message"):
-        name = row.get("Name", "fighter")
-        notes = row.get("Notes", "").strip()
-        prompt = (
-            f"You're a calm, sharp performance director writing an Instagram DM to {name}. Start with a short, natural line based on this: '{notes}'. Then, transition smoothly into this message: '{core_message}'. Keep it between 40–55 words. Tone must feel confident, human, and never salesy."
-        )
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=100
-        )
+    for i, row in enumerate(data):
+        if not row.get("Message"):
+            name = row.get("Name", "fighter")
+            notes = row.get("Notes", "").strip()
+            prompt = (
+                f"You're a calm, sharp performance director writing an Instagram DM to {name}. Start with a short, natural line based on this: '{notes}'. Then, transition smoothly into this message: '{core_message}'. Keep it between 40–55 words. Tone must feel confident, human, and never salesy."
+            )
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=100
+            )
             message = response.choices[0].message.content.strip()
             print(f"Updating row {i + 2} with message: {message}")
             sheet.update_cell(i + 2, 4, message)
