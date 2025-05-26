@@ -3,22 +3,11 @@ from bs4 import BeautifulSoup
 import gspread
 import os
 import json
-from datetime import datetime
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+import time
 
-# Google Sheets setup
-def connect_to_sheet():
-    creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-    with open("creds.json", "w") as f:
-        f.write(creds_json)
-
-    scope = ['https://spreadsheets.google.com/feeds',
-             'https://www.googleapis.com/auth/drive']
-    creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
-    client = gspread.authorize(creds)
-    return client.open("IG LEAD SCRAPER - TAPOLOGY").worksheet("IG LEAD SCRAPER - TAPOLOGY")
-
-# List of Tapology event listing URLs for each promotion
+# URLs to scrape
 PROMOTION_URLS = [
     "https://www.tapology.com/fightcenter/promotions/55-cage-warriors-fighting-championship-cwfc",
     "https://www.tapology.com/fightcenter/promotions/2673-polaris-ppjji",
@@ -31,78 +20,88 @@ PROMOTION_URLS = [
     "https://www.tapology.com/fightcenter/promotions/1979-golden-boy-promotions-gbp"
 ]
 
-# Extract fighter data from an event
-def parse_fight_card(event_url):
-    fighters = []
-    try:
-        res = requests.get(event_url)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        bouts = soup.select(".fightCard .fight")
-        for bout in bouts:
-            try:
-                names = bout.select(".fighter a span")
-                name1 = names[0].text.strip() if len(names) > 0 else ""
-                name2 = names[1].text.strip() if len(names) > 1 else ""
+# Connect to Google Sheet
+def connect_to_sheet():
+    creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    with open("creds.json", "w") as f:
+        f.write(creds_json)
 
-                records = bout.select(".record")
-                record1 = records[0].text.strip() if len(records) > 0 else ""
-                record2 = records[1].text.strip() if len(records) > 1 else ""
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("IG LEAD SCRAPER - TAPOLOGY").worksheet("IG LEAD SCRAPER - TAPOLOGY")
+    return sheet
 
-                result = bout.select_one(".result .outcome")
-                method = bout.select_one(".method")
-                weight = bout.select_one(".weight-class")
+# Get all event links from a promotion page
+def get_event_links(promo_url):
+    print(f"Fetching events from: {promo_url}")
+    html = requests.get(promo_url).text
+    soup = BeautifulSoup(html, 'html.parser')
+    links = soup.select(".fightCard a.name")
+    event_urls = ["https://www.tapology.com" + link['href'] for link in links]
+    print(f"Found {len(event_urls)} events")
+    return event_urls[:2]  # limit for debug
 
-                result_text = result.text.strip() if result else ""
-                method_text = method.text.strip() if method else ""
-                weight_class = weight.text.strip() if weight else ""
+# Scrape fighters from a single event
+def scrape_event(event_url):
+    print(f"Scraping event: {event_url}")
+    html = requests.get(event_url).text
+    soup = BeautifulSoup(html, 'html.parser')
 
-                fight_date_tag = soup.select_one(".event-date")
-                fight_date = fight_date_tag.text.strip() if fight_date_tag else ""
+    event_name = soup.select_one(".content-title h1").text.strip()
+    rows = soup.select("tr.fight")
+    print(f"Found {len(rows)} fights")
 
-                event_name_tag = soup.select_one("h1.pageTitle")
-                event_name = event_name_tag.text.strip() if event_name_tag else ""
-
-                fighters.append([name1, record1, fight_date, name2, result_text, method_text, weight_class, event_name, event_url])
-                fighters.append([name2, record2, fight_date, name1, result_text, method_text, weight_class, event_name, event_url])
-            except Exception as e:
-                continue
-    except:
-        pass
-    return fighters
-
-# Scrape all event pages for one promotion
-def scrape_promotion_events(promo_url):
-    res = requests.get(promo_url)
-    soup = BeautifulSoup(res.text, 'html.parser')
-    events = soup.select(".event a.name")
-    event_urls = ["https://www.tapology.com" + a['href'] for a in events if a['href']]
-    all_fighters = []
-    for url in event_urls:
-        all_fighters.extend(parse_fight_card(url))
-    return all_fighters
-
-# Remove duplicate entries
-seen = set()
-def dedupe(rows):
-    unique = []
+    fight_data = []
     for row in rows:
-        key = tuple(row[:4])
-        if key not in seen:
-            seen.add(key)
-            unique.append(row)
-    return unique
+        try:
+            names = row.select(".fighter a")
+            if len(names) != 2:
+                continue
 
-# Main scraping flow
+            date_str = soup.select_one(".details .add-details .left").text.strip()
+            fight_date = datetime.strptime(date_str.split("\n")[0], "%b %d, %Y").strftime("%Y-%m-%d")
+
+            fight_data.append({
+                "Name": names[0].text.strip(),
+                "Opponent": names[1].text.strip(),
+                "Fight Date": fight_date,
+                "Event Name": event_name,
+                "Tapology URL": event_url
+            })
+        except Exception as e:
+            print(f"Error parsing fight row: {e}")
+    return fight_data
+
+# Push to sheet
+def push_to_sheet(sheet, fighter_rows):
+    for row in fighter_rows:
+        sheet.append_row([
+            row.get("Name"),
+            "",  # Record placeholder
+            row.get("Fight Date"),
+            row.get("Opponent"),
+            "",  # Result placeholder
+            "",  # Method placeholder
+            "",  # Weight class placeholder
+            row.get("Event Name"),
+            row.get("Tapology URL")
+        ])
+
+# Full runner
 def run_scraper():
     sheet = connect_to_sheet()
-    all_data = []
-    for promo_url in PROMOTION_URLS:
-        all_data.extend(scrape_promotion_events(promo_url))
+    all_fighters = []
+    for url in PROMOTION_URLS:
+        event_links = get_event_links(url)
+        for link in event_links:
+            fighters = scrape_event(link)
+            all_fighters.extend(fighters)
+            time.sleep(2)
 
-    clean_data = dedupe(all_data)
-    sheet.clear()
-    sheet.append_row(["Name", "Record", "Fight Date", "Opponent", "Result", "Method", "Weight Class", "Event Name", "Tapology URL"])
-    sheet.append_rows(clean_data)
-    print(f"Scraped and saved {len(clean_data)} fighter entries.")
+    print(f"Total fighters scraped: {len(all_fighters)}")
+    push_to_sheet(sheet, all_fighters)
+    print("Done.")
 
-run_scraper()
+if __name__ == "__main__":
+    run_scraper()
