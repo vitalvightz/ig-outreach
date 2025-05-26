@@ -35,7 +35,7 @@ def run_outreach():
 
             prompt = (
                 f"You're a calm, sharp performance director writing an Instagram DM to {name}. "
-                f"Use this note: '{notes}' as the natural human opening. Then transition smoothly into this message: '{core_message}'. "
+                f"Use this note about fighter: '{notes}' as the natural human opening. Then transition smoothly into this message: '{core_message}'. "
                 f"Keep the message between 35-50 words. Never use 'I heard'. Tone should be confident, grounded, and never salesy or overhyped."
             )
 
