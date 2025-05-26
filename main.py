@@ -5,7 +5,7 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 def run_outreach():
-    # 1. Write credentials from env secret to file
+    # 1. Write Google credentials from secret to file
     creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
     with open("creds.json", "w") as f:
         f.write(creds_json)
@@ -16,7 +16,7 @@ def run_outreach():
     creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
     client_sheet = gspread.authorize(creds)
 
-    # 3. Load sheet data
+    # 3. Open sheet and pull data
     sheet = client_sheet.open("IG DM AUTOMATION").sheet1
     data = sheet.get_all_records()
     print(f"Rows pulled: {len(data)}")
@@ -24,17 +24,17 @@ def run_outreach():
     # 4. Set OpenAI client
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-    # 5. Core offer message
+    # 5. Core message
     core_message = "One of our fighters went 7-0 post-surgery after one tweak added 8% more power per strike. Want me to send over how?"
 
-    # 6. Generate DMs for rows with missing messages
+    # 6. Generate and write messages
     for i, row in enumerate(data):
         if not row.get("Message"):
             name = row.get("Name", "fighter")
             notes = row.get("Notes", "").strip()
 
             prompt = (
-                f"You're writing a calm, grounded Instagram DM to {name}. The note provided — '{notes}' — is a personal detail about them, not about you or your team. Start with a short, human line that uses that note naturally. Then transition smoothly into this message: '{core_message}'. Keep it between 40–55 words. Tone should be sharp and real — never salesy or overly familiar."
+                f"You're a calm, sharp performance director writing an Instagram DM to {name}. Start with a short, natural line based on this: '{notes}', but do not say 'I heard'. Then, transition smoothly into this message: '{core_message}'. Keep it between 40–55 words. Tone must feel confident, grounded, and never salesy."
             )
 
             response = client.chat.completions.create(
@@ -50,5 +50,5 @@ def run_outreach():
 
     print("All messages updated.")
 
-# Call the function
+# Run the function
 run_outreach()
