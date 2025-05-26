@@ -2,7 +2,7 @@ name: IG Outreach + Scraper Automation
 
 on:
   schedule:
-    - cron: "*/15 * * * *"  # Every 15 mins
+    - cron: "*/15 * * * *"  # every 15 mins
   workflow_dispatch:
 
 jobs:
@@ -39,6 +39,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+
+      - name: Install Playwright Browsers
+        run: python -m playwright install
 
       - name: Run Tapology Scraper
         env:
