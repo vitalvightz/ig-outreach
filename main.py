@@ -26,7 +26,7 @@ def run_outreach():
             name = row.get("Name", "fighter")
             notes = row.get("Notes", "").strip()
             prompt = (
-                f"Write a casual but calm Instagram DM to {name}. Use this note: '{notes}' as the human hook. Then naturally transition into this offer: '{core_message}'. Tone should match a smart, grounded performance coach."
+                f"Write a 45 word casual but calm Instagram DM to {name}. Use this note: '{notes}' as the human hook. Then naturally transition into this offer: '{core_message}'. Tone should match a smart, grounded performance coach."
             )
             response = client.chat.completions.create(
                 model="gpt-4o",
