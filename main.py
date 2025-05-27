@@ -1,4 +1,3 @@
-No look at step 1. It didn’t have to be exact but not mentioning 7-0 streak is criminal: import openai
 import gspread
 import os
 import json
