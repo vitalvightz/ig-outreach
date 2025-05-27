@@ -1,33 +1,24 @@
 import openai
 import gspread
 import os
-import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 def run_outreach():
-    # 1. Write Google credentials JSON from GitHub Actions secret
     creds_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
     with open("creds.json", "w") as f:
         f.write(creds_json)
 
-    # 2. Authenticate with Google Sheets
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
     creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
     client_sheet = gspread.authorize(creds)
-
-    # 3. Open sheet and fetch records
     sheet = client_sheet.open("IG DM AUTOMATION").sheet1
     data = sheet.get_all_records()
     print(f"Rows pulled: {len(data)}")
 
-    # 4. Set OpenAI client
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-    # 5. Core message
     core_message = "One of our fighters went 7-0 post-surgery after one tweak added 8% more power per strike. Want me to send over how?"
 
-    # 6. Generate and review messages
     for i, row in enumerate(data):
         if not row.get("Message"):
             name = row.get("Name", "fighter")
@@ -39,7 +30,6 @@ def run_outreach():
                 f"Keep the tone grounded, non-salesy, and the message between 40–50 words."
             )
 
-            # Initial message generation
             response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": prompt}],
@@ -49,7 +39,6 @@ def run_outreach():
 
             message = response.choices[0].message.content.strip()
 
-            # Review the message
             review_prompt = f"""
 You're reviewing an Instagram DM from a grounded performance director. 
 Check if it:
@@ -83,6 +72,9 @@ Here’s the message:
             else:
                 final_message = "REVIEW FAILED"
 
+            if final_message != "REVIEW FAILED" and "7-0" not in final_message:
+                final_message += " One of our fighters went 7-0 after surgery. Want me to send over how?"
+
             if final_message != "REVIEW FAILED":
                 sheet.update_cell(i + 2, 4, final_message)
                 print(f"Updated row {i + 2}: {final_message}")
@@ -91,5 +83,5 @@ Here’s the message:
 
     print("All messages processed.")
 
-# Run the script
-run_outreach()
+if __name__ == "__main__":
+    run_outreach()
