@@ -2,7 +2,7 @@ name: IG Outreach + Scraper Automation
 
 on:
   schedule:
-    - cron: "*/5 * * * *"  # every 5 mins
+    - cron: "*/30 * * * *"  # every 30 mins
   workflow_dispatch:
 
 jobs:
