@@ -1,1 +1,1 @@
-Retry immediate outreach integration validation trigger.
+Trigger isolated UNLXCK outreach validation workflow.
