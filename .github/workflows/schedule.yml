@@ -2,7 +2,7 @@ name: UNLXCK Outreach AI
 
 on:
   schedule:
-    - cron: "2-57/5 8-17 * * 1-5" # every 5 minutes on weekdays; GitHub cron uses UTC
+    - cron: "2-57/5 7-22 * * 1-5" # every 5 minutes on weekdays; GitHub cron uses UTC
   workflow_dispatch:
     inputs:
       dry_run:
