@@ -1,1 +1,1 @@
-Validation trigger is set.
+Validation marker ready.
