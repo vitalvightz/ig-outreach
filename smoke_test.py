@@ -3,31 +3,33 @@ from __future__ import annotations
 import requests
 from openai import AuthenticationError, OpenAI
 
-from main import Settings, qualify_and_draft, query_pending_candidates
+from main import Settings, qualify_and_draft, query_pending_candidates, validate_ai_result
 
 
 def main() -> int:
     settings = Settings.from_env()
     session = requests.Session()
 
-    # Proves the Notion token can query the real candidate data source.
+    # Proves the Notion token can query the real candidate data source without writing.
     pages = query_pending_candidates(session, settings)
     print(f"Notion connection OK. Found-stage prospects visible: {len(pages)}")
 
-    # Synthetic input exercises the OpenAI request without touching a real athlete record.
+    # Synthetic input exercises OpenAI authentication + structured output only.
+    # Qualification policy itself is covered by unit tests and should not make this
+    # integration smoke test brittle.
     candidate = {
-        "candidate": "Synthetic integration test",
-        "instagram_handle": "@synthetic_test",
-        "profile_url": "https://instagram.com/synthetic_test",
+        "candidate": "Integration Test Fighter",
+        "instagram_handle": "@integration_test_fighter",
+        "profile_url": "https://instagram.com/integration_test_fighter",
         "sport": "Boxing",
         "experience": "Amateur",
         "source": "Manual discovery",
-        "source_detail": "Integration test only",
+        "source_detail": "Integration fixture",
         "location": "UK",
         "city": "",
         "gym": "",
         "personalised_dm_angle": "A public fight announcement says the athlete is preparing for a bout on 18 October.",
-        "notes": "Synthetic record used only to validate the outreach engine. Do not infer any other facts.",
+        "notes": "Integration fixture. Do not infer facts beyond the supplied fields.",
     }
 
     try:
@@ -37,16 +39,25 @@ def main() -> int:
             "OpenAI authentication failed. Replace the GitHub Actions secret OPENAI_API_KEY with a current OpenAI API key."
         ) from exc
 
-    if not result["eligible"] or not result["evidence_sufficient"]:
-        raise RuntimeError(f"Smoke test should qualify the synthetic prospect: {result}")
-    if result["outreach_approach"] != "B":
-        raise RuntimeError(f"Expected Camp Priority approach B: {result}")
-    draft = result["draft_dm"]
-    if not all(label in draft for label in ("M1", "M2", "M3")):
-        raise RuntimeError(f"Expected labelled M1/M2/M3 sequence: {draft}")
+    validate_ai_result(result)
 
-    print("OpenAI structured-output smoke test OK.")
-    print(draft)
+    required = {
+        "eligible",
+        "evidence_sufficient",
+        "priority_score",
+        "qualification_reason",
+        "outreach_approach",
+        "draft_dm",
+    }
+    missing = required.difference(result)
+    if missing:
+        raise RuntimeError(f"OpenAI structured output missing fields: {sorted(missing)}")
+
+    print("OpenAI authentication + structured-output smoke test OK.")
+    print(
+        f"eligible={result['eligible']} evidence_sufficient={result['evidence_sufficient']} "
+        f"score={result['priority_score']} approach={result['outreach_approach'] or 'none'}"
+    )
     return 0
 
 
