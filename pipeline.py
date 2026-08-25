@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any
 
@@ -22,6 +23,10 @@ READY_TO_SEND = "Ready to Send"
 REJECTED = "Rejected"
 DEFAULT_SPORT = "Boxing"
 STAGE_PROPERTY_LABELS = ("Stage", "Stage (AI Fills First)")
+
+
+def _normalize_notion_id(value: str | None) -> str:
+    return (value or "").replace("-", "").lower()
 
 
 def _resolve_stage_property_id(
@@ -49,7 +54,6 @@ def _resolve_stage_property_id(
                 if property_id:
                     return property_id
 
-    # Last-resort compatibility for a future explanatory Stage label.
     stage_matches = [
         metadata.get("id")
         for key, metadata in properties.items()
@@ -150,6 +154,57 @@ def query_ai_queue(
     return merged[:max_results]
 
 
+def _retrieve_target_page(
+    session: requests.Session,
+    settings: Settings,
+    page_id: str,
+) -> dict[str, Any]:
+    response = session.get(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        headers=_notion_headers(settings.notion_api_key),
+        timeout=30,
+    )
+    if not response.ok:
+        raise RuntimeError(
+            f"Notion target-page lookup failed ({response.status_code}): {response.text}"
+        )
+
+    page = response.json()
+    parent = page.get("parent", {})
+    parent_id = parent.get("data_source_id") or parent.get("database_id") or ""
+    if _normalize_notion_id(parent_id) != _normalize_notion_id(settings.notion_data_source_id):
+        raise RuntimeError("Target page does not belong to the UNLXCK Beta Candidate Pipeline.")
+    return page
+
+
+def _stage_value(page: dict[str, Any], stage_property_id: str) -> str:
+    for prop in page.get("properties", {}).values():
+        if prop.get("id") != stage_property_id:
+            continue
+        if prop.get("type") != "select" or not prop.get("select"):
+            return ""
+        return prop["select"].get("name", "")
+    return ""
+
+
+def _target_page_if_requested(
+    session: requests.Session,
+    settings: Settings,
+    stage_property_id: str,
+) -> list[dict[str, Any]] | None:
+    """Return one webhook/manual target page, or None when normal queue polling is required."""
+    page_id = os.getenv("TARGET_PAGE_ID", "").strip()
+    if not page_id:
+        return None
+
+    page = _retrieve_target_page(session, settings, page_id)
+    stage = _stage_value(page, stage_property_id)
+    if stage not in {"", AI_QUEUE}:
+        print(f"Target page skipped because Stage is already {stage!r}.")
+        return []
+    return [page]
+
+
 def stage_from_ai(result: dict[str, Any]) -> str:
     if not result["evidence_sufficient"]:
         return NEEDS_RESEARCH
@@ -165,6 +220,14 @@ def _is_empty_row(candidate: dict[str, str]) -> bool:
             candidate.get("instagram_handle", "").strip(),
             candidate.get("personalised_dm_angle", "").strip(),
         )
+    )
+
+
+def _entry_complete(candidate: dict[str, str]) -> bool:
+    """A prospect is ready for AI only after the intern has finished the 3 manual inputs."""
+    return all(
+        candidate.get(field, "").strip()
+        for field in ("candidate", "instagram_handle", "personalised_dm_angle")
     )
 
 
@@ -246,8 +309,13 @@ def run_outreach() -> int:
     client = OpenAI(api_key=settings.openai_api_key)
 
     stage_property_id = _resolve_stage_property_id(session, settings)
-    pages = query_ai_queue(session, settings, stage_property_id)
-    print(f"New / AI Queue prospects pulled from Notion: {len(pages)}")
+    targeted_pages = _target_page_if_requested(session, settings, stage_property_id)
+    if targeted_pages is None:
+        pages = query_ai_queue(session, settings, stage_property_id)
+        print(f"New / AI Queue prospects pulled from Notion: {len(pages)}")
+    else:
+        pages = targeted_pages
+        print(f"Targeted prospects pulled from Notion: {len(pages)}")
 
     processed = 0
     skipped = 0
@@ -260,6 +328,11 @@ def run_outreach() -> int:
         if _is_empty_row(candidate):
             skipped += 1
             print(f"Skipped empty row: {candidate['page_id']}")
+            continue
+
+        if not _entry_complete(candidate):
+            skipped += 1
+            print(f"Skipped incomplete entry: {label}")
             continue
 
         try:
