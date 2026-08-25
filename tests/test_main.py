@@ -1,6 +1,6 @@
 import unittest
 
-from main import preflight_reason, validate_ai_result
+from core import preflight_reason, validate_ai_result
 
 
 class OutreachLogicTests(unittest.TestCase):
