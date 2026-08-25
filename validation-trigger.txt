@@ -1,1 +1,1 @@
-Force isolated UNLXCK outreach validation event now.
+Refresh isolated UNLXCK outreach validation trigger.
