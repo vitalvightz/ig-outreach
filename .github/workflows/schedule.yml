@@ -3,6 +3,9 @@ name: UNLXCK Outreach AI
 on:
   schedule:
     - cron: "0 8-17 * * 1-5" # hourly on weekdays; GitHub cron uses UTC
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -42,7 +45,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Safe Notion + OpenAI smoke test
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -53,7 +56,7 @@ jobs:
         run: python smoke_test.py
 
       - name: Qualify and draft outreach
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
