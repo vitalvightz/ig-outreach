@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import requests
-from openai import OpenAI
+from openai import AuthenticationError, OpenAI
 
 from main import Settings, qualify_and_draft, query_pending_candidates
 
@@ -30,7 +30,12 @@ def main() -> int:
         "notes": "Synthetic record used only to validate the outreach engine. Do not infer any other facts.",
     }
 
-    result = qualify_and_draft(OpenAI(api_key=settings.openai_api_key), settings, candidate)
+    try:
+        result = qualify_and_draft(OpenAI(api_key=settings.openai_api_key), settings, candidate)
+    except AuthenticationError as exc:
+        raise RuntimeError(
+            "OpenAI authentication failed. Replace the GitHub Actions secret OPENAI_API_KEY with a current OpenAI API key."
+        ) from exc
 
     if not result["eligible"] or not result["evidence_sufficient"]:
         raise RuntimeError(f"Smoke test should qualify the synthetic prospect: {result}")
