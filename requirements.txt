@@ -1,6 +1,2 @@
-flask
-openai
-gspread
-oauth2client
-beautifulsoup4
-playwright
+openai>=1.75.0
+requests>=2.31.0
