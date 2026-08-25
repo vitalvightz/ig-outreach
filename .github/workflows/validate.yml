@@ -1,9 +1,6 @@
 name: Validate UNLXCK Outreach Integrations
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
