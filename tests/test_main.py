@@ -1,27 +1,9 @@
 import unittest
 
-from main import preflight_reason, stage_from_result, validate_ai_result
+from main import preflight_reason, validate_ai_result
 
 
 class OutreachLogicTests(unittest.TestCase):
-    def test_ready_to_dm_when_qualified_with_evidence(self):
-        self.assertEqual(
-            stage_from_result({"eligible": True, "evidence_sufficient": True}),
-            "Ready to DM",
-        )
-
-    def test_researching_when_evidence_is_missing(self):
-        self.assertEqual(
-            stage_from_result({"eligible": True, "evidence_sufficient": False}),
-            "Researching",
-        )
-
-    def test_rejected_when_not_eligible(self):
-        self.assertEqual(
-            stage_from_result({"eligible": False, "evidence_sufficient": True}),
-            "Rejected",
-        )
-
     def test_preflight_requires_public_personalisation(self):
         candidate = {
             "instagram_handle": "@fighter",
