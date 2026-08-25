@@ -23,22 +23,26 @@ REJECTED = "Rejected"
 DEFAULT_SPORT = "Boxing"
 
 
-def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[str, Any]]:
-    """Pull new blank-stage rows plus explicit AI recheck rows."""
+def _query_stage_filter(
+    session: requests.Session,
+    settings: Settings,
+    *,
+    filter_payload: dict[str, Any],
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Query one Notion Stage filter with pagination and useful error output."""
+    if limit <= 0:
+        return []
+
     url = f"https://api.notion.com/v1/data_sources/{settings.notion_data_source_id}/query"
     results: list[dict[str, Any]] = []
     start_cursor: str | None = None
 
-    while len(results) < settings.max_candidates_per_run:
+    while len(results) < limit:
         payload: dict[str, Any] = {
-            "filter": {
-                "or": [
-                    {"property": "Stage", "select": {"equals": AI_QUEUE}},
-                    {"property": "Stage", "select": {"is_empty": True}},
-                ]
-            },
+            "filter": filter_payload,
             "sorts": [{"timestamp": "created_time", "direction": "ascending"}],
-            "page_size": min(100, settings.max_candidates_per_run - len(results)),
+            "page_size": min(100, limit - len(results)),
         }
         if start_cursor:
             payload["start_cursor"] = start_cursor
@@ -49,7 +53,11 @@ def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[s
             json=payload,
             timeout=30,
         )
-        response.raise_for_status()
+        if not response.ok:
+            raise RuntimeError(
+                f"Notion queue query failed ({response.status_code}): {response.text}"
+            )
+
         body = response.json()
         results.extend(body.get("results", []))
 
@@ -59,7 +67,43 @@ def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[s
         if not start_cursor:
             break
 
-    return results[: settings.max_candidates_per_run]
+    return results[:limit]
+
+
+def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[str, Any]]:
+    """Pull explicit AI rechecks first, then new blank-stage prospects.
+
+    Notion rejected the previous combined OR filter, so the two supported filters
+    are queried separately and merged. This also makes rechecks take priority.
+    """
+    max_results = settings.max_candidates_per_run
+
+    rechecks = _query_stage_filter(
+        session,
+        settings,
+        filter_payload={"property": "Stage", "select": {"equals": AI_QUEUE}},
+        limit=max_results,
+    )
+
+    remaining = max_results - len(rechecks)
+    new_rows = _query_stage_filter(
+        session,
+        settings,
+        filter_payload={"property": "Stage", "select": {"is_empty": True}},
+        limit=remaining,
+    )
+
+    # Defensive de-duplication in case Notion ever returns overlapping records.
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for page in [*rechecks, *new_rows]:
+        page_id = page.get("id")
+        if not page_id or page_id in seen:
+            continue
+        seen.add(page_id)
+        merged.append(page)
+
+    return merged[:max_results]
 
 
 def stage_from_ai(result: dict[str, Any]) -> str:
@@ -96,7 +140,10 @@ def _patch_page(
         json={"properties": properties},
         timeout=30,
     )
-    response.raise_for_status()
+    if not response.ok:
+        raise RuntimeError(
+            f"Notion page update failed ({response.status_code}): {response.text}"
+        )
 
 
 def _mark_terminal(
