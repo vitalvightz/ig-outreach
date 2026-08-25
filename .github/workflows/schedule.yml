@@ -3,6 +3,9 @@ name: UNLXCK Outreach AI
 on:
   schedule:
     - cron: "0 8-17 * * 1-5" # hourly on weekdays; GitHub cron uses UTC
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       dry_run:
@@ -15,11 +18,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: unlxck-outreach-ai
+  group: unlxck-outreach-ai-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  process-prospects:
+  validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -38,7 +41,19 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
+      - name: Safe Notion + OpenAI smoke test
+        if: github.event_name == 'pull_request'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
+          OPENAI_MODEL: "gpt-5.6-luna"
+          MAX_CANDIDATES_PER_RUN: "1"
+          DRY_RUN: "true"
+        run: python smoke_test.py
+
       - name: Qualify and draft outreach
+        if: github.event_name != 'pull_request'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
