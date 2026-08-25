@@ -3,8 +3,6 @@ name: UNLXCK Outreach AI
 on:
   schedule:
     - cron: "0 8-17 * * 1-5" # hourly weekday safety net; GitHub cron uses UTC
-  repository_dispatch:
-    types: [notion_candidate_completed]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -22,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: outreach-${{ github.event.client_payload.page_id || inputs.page_id || github.run_id }}
+  group: outreach-${{ inputs.page_id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -52,6 +50,6 @@ jobs:
           NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
           OPENAI_MODEL: "gpt-5.6-luna"
           MAX_CANDIDATES_PER_RUN: "100"
-          TARGET_PAGE_ID: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.page_id || github.event_name == 'workflow_dispatch' && inputs.page_id || '' }}
+          TARGET_PAGE_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.page_id || '' }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'true' || 'false' }}
         run: python pipeline.py
