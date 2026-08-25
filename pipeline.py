@@ -21,14 +21,14 @@ NEEDS_RESEARCH = "Needs Research"
 READY_TO_SEND = "Ready to Send"
 REJECTED = "Rejected"
 DEFAULT_SPORT = "Boxing"
+STAGE_PROPERTY_LABELS = ("Stage", "Stage (AI Fills First)")
 
 
-def _resolve_property_id(
+def _resolve_stage_property_id(
     session: requests.Session,
     settings: Settings,
-    property_name: str,
 ) -> str:
-    """Resolve a live Notion property ID so filters survive schema recreation/renames."""
+    """Resolve the live Stage property ID so labels can change without breaking automation."""
     response = session.get(
         f"https://api.notion.com/v1/data_sources/{settings.notion_data_source_id}",
         headers=_notion_headers(settings.notion_api_key),
@@ -40,17 +40,27 @@ def _resolve_property_id(
         )
 
     properties = response.json().get("properties", {})
-    for key, metadata in properties.items():
-        if key == property_name or metadata.get("name") == property_name:
-            property_id = metadata.get("id")
-            if property_id:
-                return property_id
 
-    available = sorted(
-        metadata.get("name", key) for key, metadata in properties.items()
-    )
+    for wanted in STAGE_PROPERTY_LABELS:
+        for key, metadata in properties.items():
+            name = metadata.get("name", key)
+            if key == wanted or name == wanted:
+                property_id = metadata.get("id")
+                if property_id:
+                    return property_id
+
+    # Last-resort compatibility for a future explanatory Stage label.
+    stage_matches = [
+        metadata.get("id")
+        for key, metadata in properties.items()
+        if metadata.get("name", key).lower().startswith("stage") and metadata.get("id")
+    ]
+    if len(stage_matches) == 1:
+        return stage_matches[0]
+
+    available = sorted(metadata.get("name", key) for key, metadata in properties.items())
     raise RuntimeError(
-        f"Notion property {property_name!r} is not visible to the integration. "
+        "Could not resolve the Notion Stage property. "
         f"Visible properties: {available}"
     )
 
@@ -63,7 +73,6 @@ def _query_stage_filter(
     select_filter: dict[str, Any],
     limit: int,
 ) -> list[dict[str, Any]]:
-    """Query one Notion Stage filter with pagination and useful error output."""
     if limit <= 0:
         return []
 
@@ -73,10 +82,7 @@ def _query_stage_filter(
 
     while len(results) < limit:
         payload: dict[str, Any] = {
-            "filter": {
-                "property": stage_property_id,
-                "select": select_filter,
-            },
+            "filter": {"property": stage_property_id, "select": select_filter},
             "sorts": [{"timestamp": "created_time", "direction": "ascending"}],
             "page_size": min(100, limit - len(results)),
         }
@@ -106,10 +112,14 @@ def _query_stage_filter(
     return results[:limit]
 
 
-def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[str, Any]]:
+def query_ai_queue(
+    session: requests.Session,
+    settings: Settings,
+    stage_property_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Pull explicit AI rechecks first, then new blank-stage prospects."""
     max_results = settings.max_candidates_per_run
-    stage_property_id = _resolve_property_id(session, settings, "Stage")
+    stage_property_id = stage_property_id or _resolve_stage_property_id(session, settings)
 
     rechecks = _query_stage_filter(
         session,
@@ -185,6 +195,7 @@ def _mark_terminal(
     settings: Settings,
     candidate: dict[str, str],
     *,
+    stage_property_id: str,
     stage: str,
     reason: str,
 ) -> None:
@@ -193,7 +204,7 @@ def _mark_terminal(
         settings,
         candidate["page_id"],
         {
-            "Stage": {"select": {"name": stage}},
+            stage_property_id: {"select": {"name": stage}},
             "Priority Score": {"number": 0},
             "AI Qualification Reason": {"rich_text": _rich_text_value(reason)},
             "Draft DM": {"rich_text": []},
@@ -206,10 +217,12 @@ def update_ai_result(
     settings: Settings,
     candidate: dict[str, str],
     result: dict[str, Any],
+    *,
+    stage_property_id: str,
 ) -> str:
     stage = stage_from_ai(result)
     properties: dict[str, Any] = {
-        "Stage": {"select": {"name": stage}},
+        stage_property_id: {"select": {"name": stage}},
         "Priority Score": {"number": result["priority_score"]},
         "AI Qualification Reason": {
             "rich_text": _rich_text_value(result["qualification_reason"])
@@ -232,7 +245,8 @@ def run_outreach() -> int:
     session = requests.Session()
     client = OpenAI(api_key=settings.openai_api_key)
 
-    pages = query_ai_queue(session, settings)
+    stage_property_id = _resolve_stage_property_id(session, settings)
+    pages = query_ai_queue(session, settings, stage_property_id)
     print(f"New / AI Queue prospects pulled from Notion: {len(pages)}")
 
     processed = 0
@@ -264,6 +278,7 @@ def run_outreach() -> int:
                     session,
                     settings,
                     candidate,
+                    stage_property_id=stage_property_id,
                     stage=REJECTED,
                     reason=reason,
                 )
@@ -277,6 +292,7 @@ def run_outreach() -> int:
                     session,
                     settings,
                     candidate,
+                    stage_property_id=stage_property_id,
                     stage=NEEDS_RESEARCH,
                     reason=missing,
                 )
@@ -285,7 +301,13 @@ def run_outreach() -> int:
                 continue
 
             result = qualify_and_draft(client, settings, candidate)
-            stage = update_ai_result(session, settings, candidate, result)
+            stage = update_ai_result(
+                session,
+                settings,
+                candidate,
+                result,
+                stage_property_id=stage_property_id,
+            )
             print(f"{stage}: {label} — score {result['priority_score']}")
             processed += 1
         except Exception as exc:
