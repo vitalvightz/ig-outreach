@@ -23,11 +23,44 @@ REJECTED = "Rejected"
 DEFAULT_SPORT = "Boxing"
 
 
+def _resolve_property_id(
+    session: requests.Session,
+    settings: Settings,
+    property_name: str,
+) -> str:
+    """Resolve a live Notion property ID so filters survive schema recreation/renames."""
+    response = session.get(
+        f"https://api.notion.com/v1/data_sources/{settings.notion_data_source_id}",
+        headers=_notion_headers(settings.notion_api_key),
+        timeout=30,
+    )
+    if not response.ok:
+        raise RuntimeError(
+            f"Notion data-source lookup failed ({response.status_code}): {response.text}"
+        )
+
+    properties = response.json().get("properties", {})
+    for key, metadata in properties.items():
+        if key == property_name or metadata.get("name") == property_name:
+            property_id = metadata.get("id")
+            if property_id:
+                return property_id
+
+    available = sorted(
+        metadata.get("name", key) for key, metadata in properties.items()
+    )
+    raise RuntimeError(
+        f"Notion property {property_name!r} is not visible to the integration. "
+        f"Visible properties: {available}"
+    )
+
+
 def _query_stage_filter(
     session: requests.Session,
     settings: Settings,
     *,
-    filter_payload: dict[str, Any],
+    stage_property_id: str,
+    select_filter: dict[str, Any],
     limit: int,
 ) -> list[dict[str, Any]]:
     """Query one Notion Stage filter with pagination and useful error output."""
@@ -40,7 +73,10 @@ def _query_stage_filter(
 
     while len(results) < limit:
         payload: dict[str, Any] = {
-            "filter": filter_payload,
+            "filter": {
+                "property": stage_property_id,
+                "select": select_filter,
+            },
             "sorts": [{"timestamp": "created_time", "direction": "ascending"}],
             "page_size": min(100, limit - len(results)),
         }
@@ -71,17 +107,15 @@ def _query_stage_filter(
 
 
 def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[str, Any]]:
-    """Pull explicit AI rechecks first, then new blank-stage prospects.
-
-    Notion rejected the previous combined OR filter, so the two supported filters
-    are queried separately and merged. This also makes rechecks take priority.
-    """
+    """Pull explicit AI rechecks first, then new blank-stage prospects."""
     max_results = settings.max_candidates_per_run
+    stage_property_id = _resolve_property_id(session, settings, "Stage")
 
     rechecks = _query_stage_filter(
         session,
         settings,
-        filter_payload={"property": "Stage", "select": {"equals": AI_QUEUE}},
+        stage_property_id=stage_property_id,
+        select_filter={"equals": AI_QUEUE},
         limit=max_results,
     )
 
@@ -89,11 +123,11 @@ def query_ai_queue(session: requests.Session, settings: Settings) -> list[dict[s
     new_rows = _query_stage_filter(
         session,
         settings,
-        filter_payload={"property": "Stage", "select": {"is_empty": True}},
+        stage_property_id=stage_property_id,
+        select_filter={"is_empty": True},
         limit=remaining,
     )
 
-    # Defensive de-duplication in case Notion ever returns overlapping records.
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
     for page in [*rechecks, *new_rows]:
@@ -215,7 +249,6 @@ def run_outreach() -> int:
             continue
 
         try:
-            # Current private beta is boxing-only. Interns do not need to fill Sport.
             if not candidate["sport"].strip():
                 candidate["sport"] = DEFAULT_SPORT
                 _patch_page(
