@@ -3,7 +3,7 @@ from __future__ import annotations
 import requests
 from openai import AuthenticationError, OpenAI
 
-from main import Settings, qualify_and_draft, validate_ai_result
+from core import Settings, qualify_and_draft, validate_ai_result
 from pipeline import query_ai_queue
 
 
