@@ -3,7 +3,8 @@ from __future__ import annotations
 import requests
 from openai import AuthenticationError, OpenAI
 
-from main import Settings, qualify_and_draft, query_pending_candidates, validate_ai_result
+from main import Settings, qualify_and_draft, validate_ai_result
+from pipeline import query_ai_queue
 
 
 def main() -> int:
@@ -11,12 +12,10 @@ def main() -> int:
     session = requests.Session()
 
     # Proves the Notion token can query the real candidate data source without writing.
-    pages = query_pending_candidates(session, settings)
-    print(f"Notion connection OK. Found-stage prospects visible: {len(pages)}")
+    pages = query_ai_queue(session, settings)
+    print(f"Notion connection OK. New / AI Queue prospects visible: {len(pages)}")
 
     # Synthetic input exercises OpenAI authentication + structured output only.
-    # Qualification policy itself is covered by unit tests and should not make this
-    # integration smoke test brittle.
     candidate = {
         "candidate": "Integration Test Fighter",
         "instagram_handle": "@integration_test_fighter",
