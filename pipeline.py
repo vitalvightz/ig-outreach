@@ -7,7 +7,7 @@ from typing import Any
 import requests
 from openai import OpenAI
 
-from main import (
+from core import (
     Settings,
     _notion_headers,
     _rich_text_value,
@@ -99,6 +99,27 @@ def _patch_page(
     response.raise_for_status()
 
 
+def _mark_terminal(
+    session: requests.Session,
+    settings: Settings,
+    candidate: dict[str, str],
+    *,
+    stage: str,
+    reason: str,
+) -> None:
+    _patch_page(
+        session,
+        settings,
+        candidate["page_id"],
+        {
+            "Stage": {"select": {"name": stage}},
+            "Priority Score": {"number": 0},
+            "AI Qualification Reason": {"rich_text": _rich_text_value(reason)},
+            "Draft DM": {"rich_text": []},
+        },
+    )
+
+
 def update_ai_result(
     session: requests.Session,
     settings: Settings,
@@ -125,21 +146,6 @@ def update_ai_result(
     return stage
 
 
-def mark_needs_research(
-    session: requests.Session,
-    settings: Settings,
-    candidate: dict[str, str],
-    reason: str,
-) -> None:
-    properties = {
-        "Stage": {"select": {"name": NEEDS_RESEARCH}},
-        "Priority Score": {"number": 0},
-        "AI Qualification Reason": {"rich_text": _rich_text_value(reason)},
-        "Draft DM": {"rich_text": []},
-    }
-    _patch_page(session, settings, candidate["page_id"], properties)
-
-
 def run_outreach() -> int:
     settings = Settings.from_env()
     session = requests.Session()
@@ -162,7 +168,7 @@ def run_outreach() -> int:
             continue
 
         try:
-            # Current private beta is boxing-first. Interns do not need to fill Sport.
+            # Current private beta is boxing-only. Interns do not need to fill Sport.
             if not candidate["sport"].strip():
                 candidate["sport"] = DEFAULT_SPORT
                 _patch_page(
@@ -172,9 +178,28 @@ def run_outreach() -> int:
                     {"Sport": {"select": {"name": DEFAULT_SPORT}}},
                 )
 
+            if candidate["sport"] != DEFAULT_SPORT:
+                reason = "Current private beta outreach is boxing-only."
+                _mark_terminal(
+                    session,
+                    settings,
+                    candidate,
+                    stage=REJECTED,
+                    reason=reason,
+                )
+                print(f"{REJECTED}: {label} — {reason}")
+                processed += 1
+                continue
+
             missing = preflight_reason(candidate)
             if missing:
-                mark_needs_research(session, settings, candidate, missing)
+                _mark_terminal(
+                    session,
+                    settings,
+                    candidate,
+                    stage=NEEDS_RESEARCH,
+                    reason=missing,
+                )
                 print(f"{NEEDS_RESEARCH}: {label} — {missing}")
                 processed += 1
                 continue
