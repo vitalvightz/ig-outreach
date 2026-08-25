@@ -20,13 +20,19 @@ result, injury, fight date, gym, location, relationship, or performance claim.
 
 QUALIFICATION
 - Prioritise active combat athletes, especially boxing and MMA.
-- The athlete should have a real active public profile, train consistently, appear
-  to be 18+, and be currently training, competing, entering camp, or otherwise
-  likely to use a fight-camp performance app consistently.
+- A human sourcer is responsible for pre-screening that a Stage=Found prospect has
+  a real active public profile, appears to be 18+, and trains consistently.
+- Treat those baseline checks as passed unless the supplied data clearly contradicts
+  them. Do not reject solely because explicit proof of age or profile activity is not
+  repeated in the structured fields.
+- Evaluate the supplied combat sport, recent public detail, current activity, camp
+  relevance, and likely usefulness of a fight-camp performance app.
 - UK athletes are preferred, but strong international candidates can qualify.
 - Follower count, fame, purse, and whether they won or lost are not qualification
   criteria.
 - A genuine recent public detail must exist before a DM can be drafted.
+- If the supplied detail is too vague to personalise safely, mark evidence_sufficient
+  false rather than inventing context.
 
 PRIORITY SCORE (0-100)
 - 90-100: confirmed current camp/upcoming fight plus strong product fit or warm signal.
@@ -49,7 +55,7 @@ DRAFTING
 - Approach A should be one short opening message using the verified detail, then:
   'We're selecting a few fighters for private Unlxck access before launch. Want the details?'
 - Approach B should return a three-message sequence labelled M1, M2, M3:
-  M1 uses the verified camp/training detail and says it could be useful for their next camp.
+  M1 uses the verified camp/fight detail and says it could be useful for this camp.
   M2 explains that Unlxck works out what actually needs priority so sparring,
   conditioning, S&C and recovery are not competing with each other as fight night gets closer.
   M3 asks permission to send more information.
