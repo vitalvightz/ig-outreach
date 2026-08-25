@@ -1,1 +1,2 @@
 Temporary branch-only file used to trigger the safe PR integration smoke test.
+Second trigger after validation workflow reached main.
