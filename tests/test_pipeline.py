@@ -1,6 +1,13 @@
 import unittest
 
-from pipeline import NEEDS_RESEARCH, READY_TO_SEND, REJECTED, _is_empty_row, stage_from_ai
+from pipeline import (
+    NEEDS_RESEARCH,
+    READY_TO_SEND,
+    REJECTED,
+    _entry_complete,
+    _is_empty_row,
+    stage_from_ai,
+)
 
 
 class PipelineStageTests(unittest.TestCase):
@@ -39,6 +46,28 @@ class PipelineStageTests(unittest.TestCase):
                 {
                     "candidate": "Fighter",
                     "instagram_handle": "",
+                    "personalised_dm_angle": "",
+                }
+            )
+        )
+
+    def test_completed_entry_requires_all_three_manual_fields(self):
+        self.assertTrue(
+            _entry_complete(
+                {
+                    "candidate": "Yash Patel",
+                    "instagram_handle": "@yashboxing",
+                    "personalised_dm_angle": "Won his second European title.",
+                }
+            )
+        )
+
+    def test_partial_entry_does_not_run_ai(self):
+        self.assertFalse(
+            _entry_complete(
+                {
+                    "candidate": "Yash Patel",
+                    "instagram_handle": "@yashboxing",
                     "personalised_dm_angle": "",
                 }
             )
