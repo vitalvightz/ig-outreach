@@ -1,41 +1,43 @@
-name: IG Outreach + Scraper Automation
+name: UNLXCK Outreach AI
 
 on:
   schedule:
-    - cron: "*/3000 * * * *"  # every 3000 mins
+    - cron: "0 8-17 * * 1-5" # hourly on UK working days; cron uses UTC
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: unlxck-outreach-ai
+  cancel-in-progress: false
+
 jobs:
-  run-dm-script:
+  process-prospects:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.12"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run DM Automation
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Qualify and draft outreach
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
+          OPENAI_MODEL: "gpt-5.6-luna"
+          MAX_CANDIDATES_PER_RUN: "100"
+          DRY_RUN: "false"
         run: python main.py
-
-  run-scraper:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
