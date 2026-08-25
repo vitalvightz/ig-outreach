@@ -1,10 +1,22 @@
 name: Validate UNLXCK Outreach Integrations
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - "smoke_test.py"
+      - "main.py"
+      - "tests/**"
+      - ".github/workflows/validate.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: unlxck-outreach-validation
+  cancel-in-progress: true
 
 jobs:
   validate:
