@@ -1,1 +1,1 @@
-Trigger immediate outreach integration validation after removing workflow concurrency.
+Retry immediate outreach integration validation trigger.
