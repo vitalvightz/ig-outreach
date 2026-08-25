@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "smoke_test.py"
-      - "main.py"
+      - "core.py"
       - "pipeline.py"
       - "tests/**"
       - ".github/workflows/validate.yml"
