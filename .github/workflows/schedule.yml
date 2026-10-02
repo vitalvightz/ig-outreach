@@ -1,16 +1,6 @@
 name: UNLXCK Outreach AI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/schedule.yml"
-  schedule:
-    # Renew the worker every 15 minutes during weekday outreach hours.
-    # Each scheduled job keeps polling for up to 150 minutes, so a delayed
-    # or dropped GitHub cron event does not immediately stop queue processing.
-    - cron: "7,22,37,52 7-22 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:
@@ -28,16 +18,13 @@ permissions:
   contents: read
 
 concurrency:
-  # Scheduled runs share one worker slot. GitHub keeps one running and one
-  # pending; newer scheduled events replace stale pending runs without
-  # interrupting the active worker. Manual/push runs remain independent.
-  group: outreach-${{ github.event_name == 'schedule' && 'scheduled-worker' || github.run_id }}
+  group: outreach-manual-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   process-prospects:
     runs-on: ubuntu-latest
-    timeout-minutes: 165
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -55,7 +42,6 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Run one manual queue pass
-        if: github.event_name == 'workflow_dispatch'
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
@@ -65,64 +51,3 @@ jobs:
           TARGET_PAGE_ID: ${{ inputs.page_id }}
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
         run: python pipeline.py
-
-      - name: Run one live queue pass after workflow updates
-        if: github.event_name == 'push'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
-          OPENAI_MODEL: "gpt-5.6-luna"
-          MAX_CANDIDATES_PER_RUN: "100"
-          TARGET_PAGE_ID: ""
-          DRY_RUN: "false"
-        run: python pipeline.py
-
-      - name: Poll Notion every two minutes
-        if: github.event_name == 'schedule'
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
-          NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
-          OPENAI_MODEL: "gpt-5.6-luna"
-          MAX_CANDIDATES_PER_RUN: "100"
-          TARGET_PAGE_ID: ""
-          DRY_RUN: "false"
-        run: |
-          set -uo pipefail
-
-          # Keep the active runner alive for 150 minutes. A new scheduled run
-          # is normally queued long before this one exits, closing the gap
-          # caused by GitHub's best-effort cron delivery.
-          deadline=$((SECONDS + 9000))
-          failures=0
-
-          while (( SECONDS < deadline )); do
-            # Stop after the configured weekday window instead of burning a
-            # runner overnight. GitHub cron uses UTC.
-            day="$(date -u +%u)"
-            hour="$(date -u +%H)"
-            hour=$((10#$hour))
-            if (( day > 5 || hour < 7 || hour > 22 )); then
-              echo "Outside outreach worker window; exiting."
-              break
-            fi
-
-            started=$SECONDS
-            echo "Queue poll started at $(date -u --iso-8601=seconds)."
-
-            if ! python pipeline.py; then
-              failures=$((failures + 1))
-              echo "::warning::Outreach queue poll failed; worker will retry on the next cycle."
-            fi
-
-            elapsed=$((SECONDS - started))
-            sleep_for=$((120 - elapsed))
-            if (( sleep_for > 0 && SECONDS < deadline )); then
-              sleep "$sleep_for"
-            fi
-          done
-
-          if (( failures > 0 )); then
-            echo "::warning::Worker completed with $failures failed poll(s)."
-          fi
