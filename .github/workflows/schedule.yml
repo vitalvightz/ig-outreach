@@ -1,6 +1,11 @@
 name: UNLXCK Outreach AI
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/schedule.yml"
   schedule:
     # Renew the worker every 15 minutes during weekday outreach hours.
     # Each scheduled job keeps polling for up to 150 minutes, so a delayed
@@ -25,7 +30,7 @@ permissions:
 concurrency:
   # Scheduled runs share one worker slot. GitHub keeps one running and one
   # pending; newer scheduled events replace stale pending runs without
-  # interrupting the active worker. Manual runs remain independent.
+  # interrupting the active worker. Manual/push runs remain independent.
   group: outreach-${{ github.event_name == 'schedule' && 'scheduled-worker' || github.run_id }}
   cancel-in-progress: false
 
@@ -59,6 +64,18 @@ jobs:
           MAX_CANDIDATES_PER_RUN: "100"
           TARGET_PAGE_ID: ${{ inputs.page_id }}
           DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+        run: python pipeline.py
+
+      - name: Run one live queue pass after workflow updates
+        if: github.event_name == 'push'
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATA_SOURCE_ID: "08d8b476-129a-42b0-b980-102b08ce4bd8"
+          OPENAI_MODEL: "gpt-5.6-luna"
+          MAX_CANDIDATES_PER_RUN: "100"
+          TARGET_PAGE_ID: ""
+          DRY_RUN: "false"
         run: python pipeline.py
 
       - name: Poll Notion every two minutes
