@@ -68,7 +68,11 @@ Never commit either secret to the repository.
 
 ## Schedule
 
-GitHub Actions runs hourly from 08:00 through 17:00 UTC on weekdays and can also be started manually.
+The production worker polls Notion approximately every two minutes during the weekday outreach window.
+
+GitHub scheduled events are only used to renew a longer-running polling worker. Each scheduled worker can continue for up to 150 minutes, so a delayed or dropped cron event does not immediately stop prospect processing. Scheduled renewals are requested every 15 minutes from 07:00 through 22:59 UTC on weekdays.
+
+Manual workflow dispatch remains available for an immediate one-off run or dry run.
 
 A new blank-stage row is processed once. A `Needs Research` record is not repeatedly billed; after fixing its evidence, a human sets it to `AI Queue` to request another AI check.
 
