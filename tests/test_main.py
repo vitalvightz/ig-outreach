@@ -42,8 +42,13 @@ class OutreachLogicTests(unittest.TestCase):
             "eligible": True,
             "evidence_sufficient": True,
             "outreach_approach": "A",
+            "priority_signals": {
+                "recent_activity": False,
+                "timely_reason": False,
+                "strong_personalisation": True,
+            },
         }
-        self.assertEqual(deterministic_priority_score(candidate, result), 65)
+        self.assertEqual(deterministic_priority_score(candidate, result), 45)
 
     def test_priority_score_rewards_timing_and_warm_source_only(self):
         candidate = {"source": "Athlete referral"}
@@ -51,8 +56,13 @@ class OutreachLogicTests(unittest.TestCase):
             "eligible": True,
             "evidence_sufficient": True,
             "outreach_approach": "B",
+            "priority_signals": {
+                "recent_activity": True,
+                "timely_reason": True,
+                "strong_personalisation": True,
+            },
         }
-        self.assertEqual(deterministic_priority_score(candidate, result), 100)
+        self.assertEqual(deterministic_priority_score(candidate, result), 97)
 
     def test_priority_score_keeps_needs_research_low(self):
         candidate = {"source": "Existing follower"}
@@ -60,8 +70,27 @@ class OutreachLogicTests(unittest.TestCase):
             "eligible": True,
             "evidence_sufficient": False,
             "outreach_approach": "",
+            "priority_signals": {
+                "recent_activity": False,
+                "timely_reason": False,
+                "strong_personalisation": False,
+            },
         }
-        self.assertEqual(deterministic_priority_score(candidate, result), 35)
+        self.assertEqual(deterministic_priority_score(candidate, result), 25)
+
+    def test_priority_score_rewards_recent_cold_activity_without_prestige(self):
+        candidate = {"source": "Instagram"}
+        result = {
+            "eligible": True,
+            "evidence_sufficient": True,
+            "outreach_approach": "A",
+            "priority_signals": {
+                "recent_activity": True,
+                "timely_reason": True,
+                "strong_personalisation": True,
+            },
+        }
+        self.assertEqual(deterministic_priority_score(candidate, result), 65)
 
 
 if __name__ == "__main__":
