@@ -15,6 +15,7 @@ from core import (
     candidate_from_page,
     preflight_reason,
     qualify_and_draft,
+    verified_profile_reason,
 )
 
 AI_QUEUE = "AI Queue"
@@ -217,6 +218,7 @@ def _is_empty_row(candidate: dict[str, str]) -> bool:
     return not any(
         (
             candidate.get("candidate", "").strip(),
+            candidate.get("verified_profile_url", "").strip(),
             candidate.get("instagram_handle", "").strip(),
             candidate.get("personalised_dm_angle", "").strip(),
         )
@@ -224,10 +226,10 @@ def _is_empty_row(candidate: dict[str, str]) -> bool:
 
 
 def _entry_complete(candidate: dict[str, str]) -> bool:
-    """A prospect is ready for AI only after the intern has finished the 3 manual inputs."""
+    """Run the verification gate once the human has supplied a candidate and evidence note."""
     return all(
         candidate.get(field, "").strip()
-        for field in ("candidate", "instagram_handle", "personalised_dm_angle")
+        for field in ("candidate", "personalised_dm_angle")
     )
 
 
@@ -336,6 +338,38 @@ def run_outreach() -> int:
             continue
 
         try:
+            verified_handle, verification_problem = verified_profile_reason(candidate)
+            if verification_problem:
+                _mark_terminal(
+                    session,
+                    settings,
+                    candidate,
+                    stage_property_id=stage_property_id,
+                    stage=NEEDS_RESEARCH,
+                    reason=verification_problem,
+                )
+                print(f"{NEEDS_RESEARCH}: {label} — {verification_problem}")
+                processed += 1
+                continue
+
+            current_handle = candidate["instagram_handle"].strip().lstrip("@")
+            if current_handle != verified_handle:
+                candidate["instagram_handle"] = verified_handle or ""
+                _patch_page(
+                    session,
+                    settings,
+                    candidate["page_id"],
+                    {
+                        "Instagram Handle": {
+                            "rich_text": _rich_text_value(candidate["instagram_handle"])
+                        }
+                    },
+                )
+                print(
+                    f"Corrected Instagram handle for {label}: "
+                    f"{current_handle or '<blank>'} -> {verified_handle}"
+                )
+
             if not candidate["sport"].strip():
                 candidate["sport"] = DEFAULT_SPORT
                 _patch_page(

@@ -1,5 +1,6 @@
 import unittest
 
+from core import instagram_handle_from_profile_url, verified_profile_reason
 from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
@@ -51,12 +52,13 @@ class PipelineStageTests(unittest.TestCase):
             )
         )
 
-    def test_completed_entry_requires_all_three_manual_fields(self):
+    def test_entry_runs_profile_gate_when_candidate_and_evidence_exist(self):
         self.assertTrue(
             _entry_complete(
                 {
                     "candidate": "Yash Patel",
-                    "instagram_handle": "@yashboxing",
+                    "verified_profile_url": "",
+                    "instagram_handle": "",
                     "personalised_dm_angle": "Won his second European title.",
                 }
             )
@@ -67,11 +69,57 @@ class PipelineStageTests(unittest.TestCase):
             _entry_complete(
                 {
                     "candidate": "Yash Patel",
-                    "instagram_handle": "@yashboxing",
+                    "verified_profile_url": "https://www.instagram.com/yashboxing/",
+                    "instagram_handle": "",
                     "personalised_dm_angle": "",
                 }
             )
         )
+
+
+
+
+
+class InstagramVerificationTests(unittest.TestCase):
+    def test_extracts_handle_from_copied_profile_url(self):
+        self.assertEqual(
+            instagram_handle_from_profile_url(
+                "https://www.instagram.com/poonia_boxer_/?igsh=abc123"
+            ),
+            "poonia_boxer_",
+        )
+
+    def test_rejects_typed_handle_without_profile_url(self):
+        self.assertIsNone(instagram_handle_from_profile_url("poonia_boxer_"))
+
+    def test_rejects_instagram_post_url(self):
+        self.assertIsNone(
+            instagram_handle_from_profile_url(
+                "https://www.instagram.com/p/ABC123/"
+            )
+        )
+
+    def test_rejects_non_instagram_url(self):
+        self.assertIsNone(
+            instagram_handle_from_profile_url("https://example.com/poonia_boxer_/")
+        )
+
+    def test_missing_verified_url_requires_research(self):
+        handle, reason = verified_profile_reason(
+            {"verified_profile_url": "", "instagram_handle": "made_up_handle"}
+        )
+        self.assertIsNone(handle)
+        self.assertIn("Verified Profile URL", reason)
+
+    def test_verified_url_becomes_authoritative_handle(self):
+        handle, reason = verified_profile_reason(
+            {
+                "verified_profile_url": "https://instagram.com/poonia_boxer_/",
+                "instagram_handle": "deepak_poonia_boxer",
+            }
+        )
+        self.assertEqual(handle, "poonia_boxer_")
+        self.assertIsNone(reason)
 
 
 if __name__ == "__main__":

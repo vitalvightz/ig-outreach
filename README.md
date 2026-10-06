@@ -13,19 +13,22 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 ### Intern manually does
 
 1. Add `Candidate`.
-2. Add `Instagram Handle`.
+2. Paste the exact Instagram profile link into `Verified Profile URL`. Do not type or guess the username.
 3. Add one genuine recent public `Personalised DM Angle`.
 4. Optionally add `Source`.
 5. Visually confirm the profile is real/active, appears 18+, and consistently trains in boxing.
-6. If AI returns `Needs Research`, improve the evidence and set `Stage = AI Queue` for a re-check.
-7. If AI returns `Ready to Send`, verify the real profile and draft, send the DM manually, then set `Stage = Contacted` and update contact/follow-up fields.
-8. Update later stages only when the real athlete action happens.
+6. The worker extracts the exact username from the copied profile URL and writes `Instagram Handle` automatically.
+7. If AI returns `Needs Research`, improve the evidence and set `Stage = AI Queue` for a re-check.
+8. If AI returns `Ready to Send`, verify the real profile and draft, send the DM manually, then set `Stage = Contacted` and update contact/follow-up fields.
+9. Update later stages only when the real athlete action happens.
 
 ### Automation/AI does
 
 - Detects new prospects whose Stage is blank, plus explicit `AI Queue` re-checks.
 - Defaults blank `Sport` to `Boxing` for the current beta.
-- Uses the Notion `Profile URL` formula generated from Instagram Handle.
+- Requires a direct copied Instagram profile URL before AI qualification.
+- Extracts and normalises the username from that URL, then writes `Instagram Handle` automatically.
+- Uses the Notion `Profile URL` formula generated from the normalised Instagram Handle.
 - Qualifies/ranks the prospect from the supplied evidence.
 - Chooses Approach A or B.
 - Writes `Priority Score`, `AI Qualification Reason`, `Outreach Approach`, and `Draft DM`.
@@ -56,6 +59,8 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 ## Safety rules
 
 The automation must not invent athlete facts, results, injuries, fight dates, gyms, locations, relationships, or performance claims. It must not reuse the old 7-0 / 8% power claim.
+
+A typed or guessed Instagram username is not sufficient verification. New prospects must include a direct Instagram profile URL copied from the real profile. Invalid, non-profile, or missing Instagram URLs are held at `Needs Research` and are not sent to the AI.
 
 Cold Instagram sends remain human-only.
 
