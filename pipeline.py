@@ -360,7 +360,7 @@ def run_outreach() -> int:
                     settings,
                     candidate["page_id"],
                     {
-                        "Instagram": {
+                        "Instagram Handle": {
                             "rich_text": _rich_text_value(candidate["instagram_handle"])
                         }
                     },
