@@ -218,6 +218,7 @@ def _is_empty_row(candidate: dict[str, str]) -> bool:
     return not any(
         (
             candidate.get("candidate", "").strip(),
+            candidate.get("verified_profile_url", "").strip(),
             candidate.get("instagram_handle", "").strip(),
             candidate.get("personalised_dm_angle", "").strip(),
         )
@@ -225,10 +226,10 @@ def _is_empty_row(candidate: dict[str, str]) -> bool:
 
 
 def _entry_complete(candidate: dict[str, str]) -> bool:
-    """A prospect is ready for AI only after the intern has finished the 3 manual inputs."""
+    """Run the verification gate once the human has supplied a candidate and evidence note."""
     return all(
         candidate.get(field, "").strip()
-        for field in ("candidate", "instagram_handle", "personalised_dm_angle")
+        for field in ("candidate", "personalised_dm_angle")
     )
 
 
