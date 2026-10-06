@@ -15,6 +15,7 @@ from core import (
     candidate_from_page,
     preflight_reason,
     qualify_and_draft,
+    verified_profile_reason,
 )
 
 AI_QUEUE = "AI Queue"
@@ -336,6 +337,38 @@ def run_outreach() -> int:
             continue
 
         try:
+            verified_handle, verification_problem = verified_profile_reason(candidate)
+            if verification_problem:
+                _mark_terminal(
+                    session,
+                    settings,
+                    candidate,
+                    stage_property_id=stage_property_id,
+                    stage=NEEDS_RESEARCH,
+                    reason=verification_problem,
+                )
+                print(f"{NEEDS_RESEARCH}: {label} — {verification_problem}")
+                processed += 1
+                continue
+
+            current_handle = candidate["instagram_handle"].strip().lstrip("@")
+            if current_handle != verified_handle:
+                candidate["instagram_handle"] = verified_handle or ""
+                _patch_page(
+                    session,
+                    settings,
+                    candidate["page_id"],
+                    {
+                        "Instagram Handle": {
+                            "rich_text": _rich_text_value(candidate["instagram_handle"])
+                        }
+                    },
+                )
+                print(
+                    f"Corrected Instagram handle for {label}: "
+                    f"{current_handle or '<blank>'} -> {verified_handle}"
+                )
+
             if not candidate["sport"].strip():
                 candidate["sport"] = DEFAULT_SPORT
                 _patch_page(
