@@ -61,12 +61,13 @@ QUALIFICATION
   rather than inventing context.
 
 PRIORITY SCORE (0-100)
-- 90-100: clearly supported current camp/upcoming fight plus strong timing or a warm signal.
-- 75-89: strong recent competition/training activity, referral, existing UNLXCK follower or
-  engager, or another clear evidence-based reason to contact now.
-- 60-74: qualified but lower urgency.
-- Below 60: weak fit, unclear activity, or insufficient reason to prioritise.
-- "Follower" here means an existing UNLXCK follower/warm audience signal, not a high follower count.
+- The numeric score is assigned deterministically after qualification. Do not try to reward prestige.
+- Titles, medals, rankings, Olympian status, professional status, fame, purse, record, wins/losses,
+  reputation, and high follower count add ZERO priority points.
+- Competitive achievements may support that the athlete is genuine/active or provide a DM hook,
+  but they must never raise the numeric priority score by themselves.
+- Priority is driven by only: a supported current camp/upcoming fight and warm-source signals.
+- "Follower" means an existing UNLXCK follower/warm audience signal, not a high follower count.
 
 OUTREACH APPROACH
 - B = Camp Priority only when supplied evidence clearly shows a current camp or upcoming fight.
@@ -134,6 +135,29 @@ If any answer is no, rewrite the draft before returning it.
 If evidence is insufficient, do not draft anything.
 Return only the requested structured output.
 """.strip()
+
+WARM_SOURCE_BONUS = {
+    "Existing follower": 10,
+    "Story engager": 10,
+    "Connector referral": 12,
+    "Athlete referral": 12,
+    "Inbound application": 15,
+}
+
+
+def deterministic_priority_score(candidate: dict[str, str], result: dict[str, Any]) -> int:
+    """Rank outreach urgency without rewarding athlete prestige."""
+    if result.get("eligible") is not True:
+        return 0
+    if result.get("evidence_sufficient") is not True:
+        return 35
+
+    score = 65
+    if result.get("outreach_approach") == "B":
+        score += 25
+    score += WARM_SOURCE_BONUS.get(candidate.get("source", ""), 0)
+    return min(score, 100)
+
 
 OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -326,6 +350,7 @@ def qualify_and_draft(client: OpenAI, settings: Settings, candidate: dict[str, s
     )
     result = json.loads(response.output_text)
     validate_ai_result(result)
+    result["priority_score"] = deterministic_priority_score(candidate, result)
     return result
 
 
