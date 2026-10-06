@@ -52,12 +52,13 @@ class PipelineStageTests(unittest.TestCase):
             )
         )
 
-    def test_completed_entry_requires_all_three_manual_fields(self):
+    def test_entry_runs_profile_gate_when_candidate_and_evidence_exist(self):
         self.assertTrue(
             _entry_complete(
                 {
                     "candidate": "Yash Patel",
-                    "instagram_handle": "@yashboxing",
+                    "verified_profile_url": "",
+                    "instagram_handle": "",
                     "personalised_dm_angle": "Won his second European title.",
                 }
             )
@@ -68,7 +69,8 @@ class PipelineStageTests(unittest.TestCase):
             _entry_complete(
                 {
                     "candidate": "Yash Patel",
-                    "instagram_handle": "@yashboxing",
+                    "verified_profile_url": "https://www.instagram.com/yashboxing/",
+                    "instagram_handle": "",
                     "personalised_dm_angle": "",
                 }
             )
