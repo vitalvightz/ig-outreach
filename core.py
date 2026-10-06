@@ -231,7 +231,7 @@ def candidate_from_page(page: dict[str, Any]) -> dict[str, str]:
     return {
         "page_id": page["id"],
         "candidate": _plain_text(properties.get("Candidate")),
-        "instagram_handle": _plain_text(properties.get("Instagram Handle")),
+        "instagram_handle": _plain_text(properties.get("Instagram")),
         "verified_profile_url": _url_value(properties.get("Verified Profile URL")),
         "profile_url": _url_value(properties.get("Profile URL")),
         "sport": _select_value(properties.get("Sport")),
