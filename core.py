@@ -61,12 +61,18 @@ QUALIFICATION
   rather than inventing context.
 
 PRIORITY SCORE (0-100)
-- 90-100: clearly supported current camp/upcoming fight plus strong timing or a warm signal.
-- 75-89: strong recent competition/training activity, referral, existing UNLXCK follower or
-  engager, or another clear evidence-based reason to contact now.
-- 60-74: qualified but lower urgency.
-- Below 60: weak fit, unclear activity, or insufficient reason to prioritise.
-- "Follower" here means an existing UNLXCK follower/warm audience signal, not a high follower count.
+- The numeric score is assigned deterministically after qualification. Do not try to reward prestige.
+- Titles, medals, rankings, Olympian status, professional status, fame, purse, record, wins/losses,
+  reputation, and high follower count add ZERO priority points.
+- Competitive achievements may support that the athlete is genuine/active or provide a DM hook,
+  but they must never raise the numeric priority score by themselves.
+- Priority is driven by: recent activity, a clear reason to contact now, current camp/upcoming fight,
+  usable personalisation evidence, and warm-source signals.
+- Set recent_activity true only when the supplied notes support genuinely recent boxing training or competition.
+- Set timely_reason true only when there is a clear present-tense reason to contact now beyond prestige alone.
+- Set strong_personalisation true when the supplied detail is specific, recent and naturally usable in a DM.
+- A title/medal/ranking can be the DM hook, but achievement level itself adds ZERO points.
+- "Follower" means an existing UNLXCK follower/warm audience signal, not a high follower count.
 
 OUTREACH APPROACH
 - B = Camp Priority only when supplied evidence clearly shows a current camp or upcoming fight.
@@ -135,12 +141,52 @@ If evidence is insufficient, do not draft anything.
 Return only the requested structured output.
 """.strip()
 
+WARM_SOURCE_BONUS = {
+    "Existing follower": 10,
+    "Story engager": 10,
+    "Connector referral": 12,
+    "Athlete referral": 12,
+    "Inbound application": 15,
+}
+
+
+def deterministic_priority_score(candidate: dict[str, str], result: dict[str, Any]) -> int:
+    """Rank outreach urgency without rewarding athlete prestige."""
+    if result.get("eligible") is not True:
+        return 0
+    if result.get("evidence_sufficient") is not True:
+        return 25
+
+    signals = result.get("priority_signals") or {}
+    score = 40
+    if signals.get("recent_activity") is True:
+        score += 10
+    if signals.get("timely_reason") is True:
+        score += 10
+    if result.get("outreach_approach") == "B":
+        score += 20
+    if signals.get("strong_personalisation") is True:
+        score += 5
+    score += WARM_SOURCE_BONUS.get(candidate.get("source", ""), 0)
+    return min(score, 100)
+
+
 OUTPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "eligible": {"type": "boolean"},
         "evidence_sufficient": {"type": "boolean"},
         "priority_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "priority_signals": {
+            "type": "object",
+            "properties": {
+                "recent_activity": {"type": "boolean"},
+                "timely_reason": {"type": "boolean"},
+                "strong_personalisation": {"type": "boolean"},
+            },
+            "required": ["recent_activity", "timely_reason", "strong_personalisation"],
+            "additionalProperties": False,
+        },
         "qualification_reason": {"type": "string"},
         "outreach_approach": {"type": "string", "enum": ["A", "B", ""]},
         "draft_dm": {"type": "string"},
@@ -149,6 +195,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "eligible",
         "evidence_sufficient",
         "priority_score",
+        "priority_signals",
         "qualification_reason",
         "outreach_approach",
         "draft_dm",
@@ -326,6 +373,7 @@ def qualify_and_draft(client: OpenAI, settings: Settings, candidate: dict[str, s
     )
     result = json.loads(response.output_text)
     validate_ai_result(result)
+    result["priority_score"] = deterministic_priority_score(candidate, result)
     return result
 
 
