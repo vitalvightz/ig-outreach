@@ -17,7 +17,7 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 3. Add one genuine recent public `Personalised DM Angle`.
 4. Optionally add `Source`.
 5. Visually confirm the profile is real/active, appears 18+, and consistently trains in boxing.
-6. The worker extracts the exact username from the copied profile URL and writes `Instagram Handle` automatically.
+6. The worker extracts the exact username from the copied profile URL and writes `Instagram` automatically.
 7. If AI returns `Needs Research`, improve the evidence and set `Stage = AI Queue` for a re-check.
 8. If AI returns `Ready to Send`, verify the real profile and draft, send the DM manually, then set `Stage = Contacted` and update contact/follow-up fields.
 9. Update later stages only when the real athlete action happens.
@@ -27,8 +27,8 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 - Detects new prospects whose Stage is blank, plus explicit `AI Queue` re-checks.
 - Defaults blank `Sport` to `Boxing` for the current beta.
 - Requires a direct copied Instagram profile URL before AI qualification.
-- Extracts and normalises the username from that URL, then writes `Instagram Handle` automatically.
-- Uses the Notion `Profile URL` formula generated from the normalised Instagram Handle.
+- Extracts and normalises the username from that URL, then writes `Instagram` automatically.
+- Uses the Notion `Profile URL` formula generated from the normalised Instagram.
 - Qualifies/ranks the prospect from the supplied evidence.
 - Chooses Approach A or B.
 - Writes `Priority Score`, `AI Qualification Reason`, `Outreach Approach`, and `Draft DM`.
