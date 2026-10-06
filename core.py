@@ -2,14 +2,30 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from openai import OpenAI
 
 NOTION_VERSION = "2026-03-11"
 DEFAULT_DATA_SOURCE_ID = "08d8b476-129a-42b0-b980-102b08ce4bd8"
 DEFAULT_MODEL = "gpt-5.6-luna"
+
+INSTAGRAM_HANDLE_RE = re.compile(r"^[A-Za-z0-9._]{1,30}$")
+INSTAGRAM_PROFILE_HOSTS = {"instagram.com", "www.instagram.com", "m.instagram.com"}
+INSTAGRAM_RESERVED_PATHS = {
+    "accounts",
+    "about",
+    "direct",
+    "explore",
+    "p",
+    "reel",
+    "reels",
+    "stories",
+    "tv",
+}
 
 AI_INSTRUCTIONS = """
 You are UNLXCK's internal athlete-outreach qualification and drafting engine.
@@ -216,6 +232,7 @@ def candidate_from_page(page: dict[str, Any]) -> dict[str, str]:
         "page_id": page["id"],
         "candidate": _plain_text(properties.get("Candidate")),
         "instagram_handle": _plain_text(properties.get("Instagram Handle")),
+        "verified_profile_url": _url_value(properties.get("Verified Profile URL")),
         "profile_url": _url_value(properties.get("Profile URL")),
         "sport": _select_value(properties.get("Sport")),
         "experience": _select_value(properties.get("Experience")),
@@ -227,6 +244,55 @@ def candidate_from_page(page: dict[str, Any]) -> dict[str, str]:
         "personalised_dm_angle": _plain_text(properties.get("Personalised DM Angle")),
         "notes": _plain_text(properties.get("Notes")),
     }
+
+
+def instagram_handle_from_profile_url(value: str) -> str | None:
+    """Extract a canonical Instagram username from a copied profile URL."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+
+    try:
+        parsed = urlparse(raw)
+    except ValueError:
+        return None
+
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if parsed.netloc.lower() not in INSTAGRAM_PROFILE_HOSTS:
+        return None
+
+    parts = [unquote(part) for part in parsed.path.split("/") if part]
+    if len(parts) != 1:
+        return None
+
+    handle = parts[0].lstrip("@")
+    if handle.lower() in INSTAGRAM_RESERVED_PATHS:
+        return None
+    if not INSTAGRAM_HANDLE_RE.fullmatch(handle):
+        return None
+    return handle
+
+
+def verified_profile_reason(candidate: dict[str, str]) -> tuple[str | None, str | None]:
+    """Return (canonical_handle, problem) for the human-copied Instagram profile URL."""
+    verified_url = candidate.get("verified_profile_url", "").strip()
+    if not verified_url:
+        return (
+            None,
+            "Needs research: paste the exact Instagram profile URL into Verified Profile URL. "
+            "Do not type or guess the username.",
+        )
+
+    handle = instagram_handle_from_profile_url(verified_url)
+    if not handle:
+        return (
+            None,
+            "Needs research: Verified Profile URL must be a direct Instagram profile link, "
+            "for example https://www.instagram.com/username/.",
+        )
+
+    return handle, None
 
 
 def preflight_reason(candidate: dict[str, str]) -> str | None:
