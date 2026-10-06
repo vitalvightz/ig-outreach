@@ -1,6 +1,6 @@
 import unittest
 
-from core import preflight_reason, validate_ai_result
+from core import deterministic_priority_score, preflight_reason, validate_ai_result
 
 
 class OutreachLogicTests(unittest.TestCase):
@@ -35,6 +35,33 @@ class OutreachLogicTests(unittest.TestCase):
                 "draft_dm": "M1: verified detail",
             }
         )
+
+    def test_priority_score_ignores_prestige_for_cold_private_beta(self):
+        candidate = {"source": "Instagram"}
+        result = {
+            "eligible": True,
+            "evidence_sufficient": True,
+            "outreach_approach": "A",
+        }
+        self.assertEqual(deterministic_priority_score(candidate, result), 65)
+
+    def test_priority_score_rewards_timing_and_warm_source_only(self):
+        candidate = {"source": "Athlete referral"}
+        result = {
+            "eligible": True,
+            "evidence_sufficient": True,
+            "outreach_approach": "B",
+        }
+        self.assertEqual(deterministic_priority_score(candidate, result), 100)
+
+    def test_priority_score_keeps_needs_research_low(self):
+        candidate = {"source": "Existing follower"}
+        result = {
+            "eligible": True,
+            "evidence_sufficient": False,
+            "outreach_approach": "",
+        }
+        self.assertEqual(deterministic_priority_score(candidate, result), 35)
 
 
 if __name__ == "__main__":
