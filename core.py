@@ -66,7 +66,12 @@ PRIORITY SCORE (0-100)
   reputation, and high follower count add ZERO priority points.
 - Competitive achievements may support that the athlete is genuine/active or provide a DM hook,
   but they must never raise the numeric priority score by themselves.
-- Priority is driven by only: a supported current camp/upcoming fight and warm-source signals.
+- Priority is driven by: recent activity, a clear reason to contact now, current camp/upcoming fight,
+  usable personalisation evidence, and warm-source signals.
+- Set recent_activity true only when the supplied notes support genuinely recent boxing training or competition.
+- Set timely_reason true only when there is a clear present-tense reason to contact now beyond prestige alone.
+- Set strong_personalisation true when the supplied detail is specific, recent and naturally usable in a DM.
+- A title/medal/ranking can be the DM hook, but achievement level itself adds ZERO points.
 - "Follower" means an existing UNLXCK follower/warm audience signal, not a high follower count.
 
 OUTREACH APPROACH
@@ -150,11 +155,18 @@ def deterministic_priority_score(candidate: dict[str, str], result: dict[str, An
     if result.get("eligible") is not True:
         return 0
     if result.get("evidence_sufficient") is not True:
-        return 35
+        return 25
 
-    score = 65
+    signals = result.get("priority_signals") or {}
+    score = 40
+    if signals.get("recent_activity") is True:
+        score += 10
+    if signals.get("timely_reason") is True:
+        score += 10
     if result.get("outreach_approach") == "B":
-        score += 25
+        score += 20
+    if signals.get("strong_personalisation") is True:
+        score += 5
     score += WARM_SOURCE_BONUS.get(candidate.get("source", ""), 0)
     return min(score, 100)
 
@@ -165,6 +177,16 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "eligible": {"type": "boolean"},
         "evidence_sufficient": {"type": "boolean"},
         "priority_score": {"type": "integer", "minimum": 0, "maximum": 100},
+        "priority_signals": {
+            "type": "object",
+            "properties": {
+                "recent_activity": {"type": "boolean"},
+                "timely_reason": {"type": "boolean"},
+                "strong_personalisation": {"type": "boolean"},
+            },
+            "required": ["recent_activity", "timely_reason", "strong_personalisation"],
+            "additionalProperties": False,
+        },
         "qualification_reason": {"type": "string"},
         "outreach_approach": {"type": "string", "enum": ["A", "B", ""]},
         "draft_dm": {"type": "string"},
@@ -173,6 +195,7 @@ OUTPUT_SCHEMA: dict[str, Any] = {
         "eligible",
         "evidence_sufficient",
         "priority_score",
+        "priority_signals",
         "qualification_reason",
         "outreach_approach",
         "draft_dm",
