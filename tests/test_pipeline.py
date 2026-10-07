@@ -7,6 +7,7 @@ from pipeline import (
     REJECTED,
     _entry_complete,
     _is_empty_row,
+    _ready_row_needs_repair,
     stage_from_ai,
 )
 
@@ -75,6 +76,30 @@ class PipelineStageTests(unittest.TestCase):
                 }
             )
         )
+
+    def test_broken_ready_row_is_reprocessed(self):
+        page = {
+            "properties": {
+                "Priority Score": {"number": 0},
+                "AI Qualification Reason": {"rich_text": []},
+                "Draft DM": {"rich_text": []},
+                "Instagram Handle": {"rich_text": []},
+                "Outreach Approach": {"select": None},
+            }
+        }
+        self.assertTrue(_ready_row_needs_repair(page))
+
+    def test_complete_ready_row_is_not_reprocessed(self):
+        page = {
+            "properties": {
+                "Priority Score": {"number": 70},
+                "AI Qualification Reason": {"rich_text": [{"plain_text": "Qualified"}]},
+                "Draft DM": {"rich_text": [{"plain_text": "Yo..."}]},
+                "Instagram Handle": {"rich_text": [{"plain_text": "fighter"}]},
+                "Outreach Approach": {"select": {"name": "A"}},
+            }
+        }
+        self.assertFalse(_ready_row_needs_repair(page))
 
 
 

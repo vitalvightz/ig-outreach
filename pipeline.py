@@ -77,6 +77,7 @@ def _query_stage_filter(
     stage_property_id: str,
     select_filter: dict[str, Any],
     limit: int,
+    sort_direction: str = "ascending",
 ) -> list[dict[str, Any]]:
     if limit <= 0:
         return []
@@ -88,7 +89,7 @@ def _query_stage_filter(
     while len(results) < limit:
         payload: dict[str, Any] = {
             "filter": {"property": stage_property_id, "select": select_filter},
-            "sorts": [{"timestamp": "created_time", "direction": "ascending"}],
+            "sorts": [{"timestamp": "created_time", "direction": sort_direction}],
             "page_size": min(100, limit - len(results)),
         }
         if start_cursor:
@@ -117,6 +118,20 @@ def _query_stage_filter(
     return results[:limit]
 
 
+def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
+    """Ready-to-send rows must have the full AI-owned output set."""
+    properties = page.get("properties", {})
+    score = (properties.get("Priority Score") or {}).get("number")
+    return (
+        score is None
+        or score <= 0
+        or not (properties.get("AI Qualification Reason") or {}).get("rich_text")
+        or not (properties.get("Draft DM") or {}).get("rich_text")
+        or not (properties.get("Instagram Handle") or {}).get("rich_text")
+        or not (properties.get("Outreach Approach") or {}).get("select")
+    )
+
+
 def query_ai_queue(
     session: requests.Session,
     settings: Settings,
@@ -126,15 +141,26 @@ def query_ai_queue(
     max_results = settings.max_candidates_per_run
     stage_property_id = stage_property_id or _resolve_stage_property_id(session, settings)
 
+    recent_ready = _query_stage_filter(
+        session,
+        settings,
+        stage_property_id=stage_property_id,
+        select_filter={"equals": READY_TO_SEND},
+        limit=max_results,
+        sort_direction="descending",
+    )
+    repairs = [page for page in recent_ready if _ready_row_needs_repair(page)]
+
+    remaining = max_results - len(repairs)
     rechecks = _query_stage_filter(
         session,
         settings,
         stage_property_id=stage_property_id,
         select_filter={"equals": AI_QUEUE},
-        limit=max_results,
+        limit=remaining,
     )
 
-    remaining = max_results - len(rechecks)
+    remaining -= len(rechecks)
     new_rows = _query_stage_filter(
         session,
         settings,
@@ -145,7 +171,7 @@ def query_ai_queue(
 
     seen: set[str] = set()
     merged: list[dict[str, Any]] = []
-    for page in [*rechecks, *new_rows]:
+    for page in [*repairs, *rechecks, *new_rows]:
         page_id = page.get("id")
         if not page_id or page_id in seen:
             continue
@@ -333,8 +359,24 @@ def run_outreach() -> int:
             continue
 
         if not _entry_complete(candidate):
-            skipped += 1
-            print(f"Skipped incomplete entry: {label}")
+            if _stage_value(page, stage_property_id) == READY_TO_SEND:
+                reason = (
+                    "Needs research: Candidate and Personalised DM Angle must be complete "
+                    "before this prospect can be Ready to Send."
+                )
+                _mark_terminal(
+                    session,
+                    settings,
+                    candidate,
+                    stage_property_id=stage_property_id,
+                    stage=NEEDS_RESEARCH,
+                    reason=reason,
+                )
+                print(f"{NEEDS_RESEARCH}: {label} — {reason}")
+                processed += 1
+            else:
+                skipped += 1
+                print(f"Skipped incomplete entry: {label}")
             continue
 
         try:
