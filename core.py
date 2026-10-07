@@ -368,7 +368,7 @@ def qualify_and_draft(client: OpenAI, settings: Settings, candidate: dict[str, s
                 "strict": True,
             }
         },
-        max_output_tokens=500,
+        max_output_tokens=1200,
         store=False,
     )
     result = json.loads(response.output_text)
