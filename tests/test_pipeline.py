@@ -6,7 +6,6 @@ from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
     REJECTED,
-    _candidate_counts_toward_daily_target,
     _entry_complete,
     _is_empty_row,
     _ready_row_needs_repair,
@@ -120,26 +119,6 @@ class PipelineStageTests(unittest.TestCase):
         self.assertFalse(_ready_row_needs_repair(page))
 
 
-    def test_daily_target_requires_all_three_human_fields(self):
-        self.assertTrue(
-            _candidate_counts_toward_daily_target(
-                {
-                    "candidate": "Fighter",
-                    "verified_profile_url": "https://www.instagram.com/fighter/",
-                    "personalised_dm_angle": "Recent public boxing detail.",
-                }
-            )
-        )
-        self.assertFalse(
-            _candidate_counts_toward_daily_target(
-                {
-                    "candidate": "Fighter",
-                    "verified_profile_url": "",
-                    "personalised_dm_angle": "Recent public boxing detail.",
-                }
-            )
-        )
-
     def test_daily_counter_uses_london_calendar_day(self):
         start, end = _today_utc_bounds(
             datetime(2026, 10, 8, 12, 0, tzinfo=timezone.utc)
@@ -159,6 +138,11 @@ class InstagramVerificationTests(unittest.TestCase):
             ),
             "poonia_boxer_",
         )
+
+    def test_rejects_invalid_dot_handles(self):
+        for handle in (".", ".fighter", "fighter.", "fight..er"):
+            with self.subTest(handle=handle):
+                self.assertIsNone(instagram_handle_from_profile_url(f"https://instagram.com/{handle}/"))
 
     def test_rejects_typed_handle_without_profile_url(self):
         self.assertIsNone(instagram_handle_from_profile_url("poonia_boxer_"))

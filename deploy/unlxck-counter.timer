@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh UNLXCK outreach counter every two minutes, including weekends
+
+[Timer]
+OnCalendar=*-*-* *:0/2:00
+Persistent=true
+AccuracySec=1s
+Unit=unlxck-counter.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+var/
+*.sqlite3*
+.env
+counter-inventory.json
+counter-approvals.json

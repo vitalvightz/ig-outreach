@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: outreach-manual-${{ github.run_id }}
+  group: outreach-manual
   cancel-in-progress: false
 
 jobs:

@@ -5,6 +5,9 @@ on:
     paths:
       - "core.py"
       - "pipeline.py"
+      - "qualification.py"
+      - "daily_counter.py"
+      - "migrate_counter.py"
       - "tests/**"
       - ".github/workflows/validate.yml"
   push:
@@ -14,6 +17,9 @@ on:
       - "smoke_test.py"
       - "core.py"
       - "pipeline.py"
+      - "qualification.py"
+      - "daily_counter.py"
+      - "migrate_counter.py"
       - "tests/**"
       - ".github/workflows/validate.yml"
   workflow_dispatch:

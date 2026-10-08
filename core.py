@@ -307,9 +307,9 @@ class Settings:
     dry_run: bool
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls, *, require_openai: bool = True) -> "Settings":
         return cls(
-            openai_api_key=_required_env("OPENAI_API_KEY"),
+            openai_api_key=_required_env("OPENAI_API_KEY") if require_openai else "",
             notion_api_key=_required_env("NOTION_API_KEY"),
             notion_data_source_id=os.getenv("NOTION_DATA_SOURCE_ID", DEFAULT_DATA_SOURCE_ID),
             openai_model=os.getenv("OPENAI_MODEL", DEFAULT_MODEL),
@@ -409,7 +409,8 @@ def instagram_handle_from_profile_url(value: str) -> str | None:
     handle = parts[0].lstrip("@")
     if handle.lower() in INSTAGRAM_RESERVED_PATHS:
         return None
-    if not INSTAGRAM_HANDLE_RE.fullmatch(handle):
+    if (not INSTAGRAM_HANDLE_RE.fullmatch(handle)
+            or handle.startswith(".") or handle.endswith(".") or ".." in handle):
         return None
     return handle
 

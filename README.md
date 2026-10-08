@@ -103,3 +103,22 @@ DRY_RUN=true python pipeline.py
 ## Model
 
 The default model is `gpt-5.6-luna` for this structured classification/drafting workload. Override with `OPENAI_MODEL` if required.
+
+## Daily qualified productivity counter
+
+The counter requires a successful structured AI approval, complete research/AI
+outputs and a valid completed Stage. It deduplicates Instagram profiles and credits
+`Qualified At` in Europe/London, including negative adjustments after revocation.
+The target remains 50 and the existing minimal Notion UI is preserved.
+
+Before running this revision in production, follow
+[the additive migration and Hetzner rollout instructions](docs/daily-counter-rollout.md).
+A historical Stage or score alone cannot prove AI qualification. The backfill
+previews by default and preserves approved legacy rows without inventing dates.
+
+`COUNTER_ONLY=true python pipeline.py` updates just the counter, with no OpenAI key
+or calls. Set `OUTREACH_COUNTER_STATE` to a persistent absolute SQLite file path.
+The supplied counter timer runs every two minutes including weekends; set
+`OUTREACH_EXTERNAL_COUNTER=true` on the existing weekday AI worker when using it.
+
+Tests: `python -m unittest discover -s tests -v`.
