@@ -1,9 +1,50 @@
 import unittest
+from datetime import date
 
-from core import deterministic_priority_score, preflight_reason, validate_ai_result
+from core import deterministic_priority_score, fight_date_issue, preflight_reason, validate_ai_result
 
 
 class OutreachLogicTests(unittest.TestCase):
+    def test_rejects_expired_explicit_upcoming_fight(self):
+        athlete = {"personalised_dm_angle": "JUDGEMENT DAY Saturday September 26 2026 National Stadium Dublin upcoming fight poster"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 8))
+        self.assertEqual(issue[0], "Rejected")
+        self.assertIn("26 September 2026", issue[1])
+
+    def test_rejects_stale_locked_in_draft(self):
+        athlete = {"personalised_dm_angle": "LOCKED IN 26TH SEPT 2026 Bowliers Trafford Park"}
+        self.assertEqual(fight_date_issue(athlete, draft="saw you've got Bowliers locked in", today=date(2026, 10, 8))[0], "Rejected")
+
+    def test_unanchored_relative_fight_needs_research(self):
+        athlete = {"personalised_dm_angle": "2 weeks out world championships"}
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Needs Research")
+
+    def test_unanchored_tomorrow_needs_research(self):
+        athlete = {"personalised_dm_angle": "TOMORROW NIGHT fight weigh-in"}
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Needs Research")
+
+    def test_future_fight_draft_must_use_exact_date(self):
+        athlete = {"personalised_dm_angle": "upcoming fight on 24 October 2026"}
+        self.assertEqual(
+            fight_date_issue(athlete, draft="M1: saw your fight coming up in two weeks.", approach="B", today=date(2026, 10, 8))[0],
+            "Needs Research",
+        )
+        self.assertIsNone(
+            fight_date_issue(athlete, draft="M1: saw your fight on 24 October 2026. M2: Fight night.", approach="B", today=date(2026, 10, 8))
+        )
+
+    def test_fight_camp_with_yearless_event_date_needs_research(self):
+        athlete = {"personalised_dm_angle": "currently in camp for 7th November Doncaster Dome"}
+        self.assertEqual(fight_date_issue(athlete, draft="M1: saw you're in camp", approach="B", today=date(2026, 10, 8))[0], "Needs Research")
+
+    def test_past_result_not_rejected_as_upcoming(self):
+        athlete = {"personalised_dm_angle": "WINNER BRENDAN ATHERTON 12 September 2026"}
+        self.assertIsNone(fight_date_issue(athlete, draft="Saw you won the Blockone Belter.", approach="A", today=date(2026, 10, 8)))
+
+    def test_current_camp_without_future_bout_date_remains_allowed(self):
+        athlete = {"personalised_dm_angle": "currently in camp at Team GB Sheffield October 2026"}
+        self.assertIsNone(fight_date_issue(athlete, draft="M1: saw you're at Team GB camp.", approach="B", today=date(2026, 10, 8)))
+
     def test_preflight_requires_public_personalisation(self):
         candidate = {
             "instagram_handle": "@fighter",

@@ -92,6 +92,21 @@ class PipelineStageTests(unittest.TestCase):
         }
         self.assertTrue(_ready_row_needs_repair(page))
 
+    def test_stale_ready_fight_is_reprocessed(self):
+        page = {
+            "id": "test-id",
+            "properties": {
+                "Candidate": {"type": "title", "title": [{"plain_text": "Dean"}]},
+                "Personalised DM Angle": {"type": "rich_text", "rich_text": [{"plain_text": "upcoming fight 26 September 2026"}]},
+                "Priority Score": {"number": 80},
+                "AI Qualification Reason": {"rich_text": [{"plain_text": "Upcoming bout"}]},
+                "Draft DM": {"type": "rich_text", "rich_text": [{"plain_text": "M1: you've got a fight coming up"}]},
+                "Instagram Handle": {"rich_text": [{"plain_text": "dean"}]},
+                "Outreach Approach": {"type": "select", "select": {"name": "B"}},
+            },
+        }
+        self.assertTrue(_ready_row_needs_repair(page))
+
     def test_complete_ready_row_is_not_reprocessed(self):
         page = {
             "properties": {

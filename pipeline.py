@@ -12,6 +12,9 @@ from openai import OpenAI
 
 from core import (
     Settings,
+    _plain_text,
+    _select_value,
+    fight_date_issue,
     _notion_headers,
     _rich_text_value,
     candidate_from_page,
@@ -233,6 +236,11 @@ def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
         or not (properties.get("Draft DM") or {}).get("rich_text")
         or not (properties.get("Instagram Handle") or {}).get("rich_text")
         or not (properties.get("Outreach Approach") or {}).get("select")
+        or fight_date_issue(
+            {"personalised_dm_angle": _plain_text(properties.get("Personalised DM Angle"))},
+            draft=_plain_text(properties.get("Draft DM")),
+            approach=_select_value(properties.get("Outreach Approach")),
+        ) is not None
     )
 
 
@@ -489,6 +497,17 @@ def run_outreach() -> int:
             continue
 
         try:
+            timing_issue = fight_date_issue(candidate)
+            if timing_issue:
+                stage, reason = timing_issue
+                _mark_terminal(
+                    session, settings, candidate,
+                    stage_property_id=stage_property_id, stage=stage, reason=reason,
+                )
+                print(f"{stage}: {label} — {reason}")
+                processed += 1
+                continue
+
             verified_handle, verification_problem = verified_profile_reason(candidate)
             if verification_problem:
                 _mark_terminal(
@@ -559,6 +578,18 @@ def run_outreach() -> int:
                 continue
 
             result = qualify_and_draft(client, settings, candidate)
+            timing_issue = fight_date_issue(
+                candidate, draft=result["draft_dm"], approach=result["outreach_approach"],
+            )
+            if timing_issue:
+                stage, reason = timing_issue
+                _mark_terminal(
+                    session, settings, candidate,
+                    stage_property_id=stage_property_id, stage=stage, reason=reason,
+                )
+                print(f"{stage}: {label} — {reason}")
+                processed += 1
+                continue
             stage = update_ai_result(
                 session,
                 settings,
