@@ -379,6 +379,13 @@ def update_ai_result(
 
 def run_outreach() -> int:
     settings = Settings.from_env(require_openai=os.getenv("COUNTER_ONLY", "").lower() != "true")
+    # An omitted cutover would reclassify historical Ready-to-Send prospects.
+    if not settings.dry_run:
+        raw_cutover = os.getenv("OUTREACH_COUNTER_CUTOVER_AT", "").strip()
+        if not raw_cutover:
+            raise RuntimeError("OUTREACH_COUNTER_CUTOVER_AT is required for live outreach")
+        from qualification import utc_time
+        utc_time(raw_cutover)
     session = NotionSession()
 
     stage_property_id = _resolve_stage_property_id(session, settings)
