@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import requests
 from openai import OpenAI
@@ -24,6 +26,12 @@ READY_TO_SEND = "Ready to Send"
 REJECTED = "Rejected"
 DEFAULT_SPORT = "Boxing"
 STAGE_PROPERTY_LABELS = ("Stage", "Stage (AI Fills First)")
+DAILY_TARGET = 50
+DAILY_COUNTER_PAGE_ID = os.getenv(
+    "NOTION_DAILY_COUNTER_PAGE_ID",
+    "3f3d6e71-8d27-8165-b1a2-e5d137d1c172",
+)
+LONDON_TZ = ZoneInfo("Europe/London")
 
 
 def _normalize_notion_id(value: str | None) -> str:
@@ -116,6 +124,102 @@ def _query_stage_filter(
             break
 
     return results[:limit]
+
+
+def _today_utc_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
+    """Return the current Europe/London calendar day as UTC bounds."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    local = current.astimezone(LONDON_TZ)
+    start_local = local.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_local = start_local + timedelta(days=1)
+    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+
+
+def _candidate_counts_toward_daily_target(candidate: dict[str, str]) -> bool:
+    return all(
+        candidate.get(field, "").strip()
+        for field in ("candidate", "verified_profile_url", "personalised_dm_angle")
+    )
+
+
+def _count_today_completed(
+    session: requests.Session,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+) -> int:
+    """Count complete human-entered prospects created on the current UK day."""
+    start, end = _today_utc_bounds(now)
+    start_cursor: str | None = None
+    count = 0
+    url = f"https://api.notion.com/v1/data_sources/{settings.notion_data_source_id}/query"
+
+    while True:
+        payload: dict[str, Any] = {
+            "filter": {
+                "and": [
+                    {
+                        "timestamp": "created_time",
+                        "created_time": {"on_or_after": start.isoformat()},
+                    },
+                    {
+                        "timestamp": "created_time",
+                        "created_time": {"before": end.isoformat()},
+                    },
+                ]
+            },
+            "page_size": 100,
+        }
+        if start_cursor:
+            payload["start_cursor"] = start_cursor
+
+        response = session.post(
+            url,
+            headers=_notion_headers(settings.notion_api_key),
+            json=payload,
+            timeout=30,
+        )
+        if not response.ok:
+            raise RuntimeError(
+                f"Notion daily-counter query failed ({response.status_code}): {response.text}"
+            )
+
+        body = response.json()
+        count += sum(
+            _candidate_counts_toward_daily_target(candidate_from_page(page))
+            for page in body.get("results", [])
+        )
+
+        if not body.get("has_more"):
+            return count
+        start_cursor = body.get("next_cursor")
+        if not start_cursor:
+            return count
+
+
+def _update_daily_progress_counter(
+    session: requests.Session,
+    settings: Settings,
+    *,
+    now: datetime | None = None,
+) -> int:
+    count = _count_today_completed(session, settings, now=now)
+    title = f"TODAY COMPLETED — {count} / {DAILY_TARGET}"
+    _patch_page(
+        session,
+        settings,
+        DAILY_COUNTER_PAGE_ID,
+        {
+            "Candidate": {
+                "title": [{"type": "text", "text": {"content": title}}]
+            },
+            "Priority Score": {"number": count},
+        },
+    )
+    print(f"Daily progress: {count}/{DAILY_TARGET}")
+    return count
 
 
 def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
@@ -337,6 +441,11 @@ def run_outreach() -> int:
     client = OpenAI(api_key=settings.openai_api_key)
 
     stage_property_id = _resolve_stage_property_id(session, settings)
+
+    try:
+        _update_daily_progress_counter(session, settings)
+    except Exception as exc:
+        print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
     targeted_pages = _target_page_if_requested(session, settings, stage_property_id)
     if targeted_pages is None:
         pages = query_ai_queue(session, settings, stage_property_id)
@@ -462,6 +571,11 @@ def run_outreach() -> int:
         except Exception as exc:
             failed += 1
             print(f"ERROR: {label}: {exc}", file=sys.stderr)
+
+    try:
+        _update_daily_progress_counter(session, settings)
+    except Exception as exc:
+        print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
 
     print(
         f"Outreach run complete. Processed={processed}, Skipped={skipped}, Failed={failed}"
