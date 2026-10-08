@@ -410,14 +410,14 @@ class IntegrationTests(unittest.TestCase):
         return sync_counter(self.notion, settings, "stage", "counter", now=now, state_path=self.path)
 
     def test_forward_cutover_keeps_legacy_in_notion_and_starts_at_zero(self):
-        old = prospect("old-ready", qualified=False)
+        old = prospect("oldready", qualified=False)
         self.notion = FakeNotion([old])
         with patch.dict("os.environ", {"OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
             self.assertEqual(self.sync(), 0)
-            self.assertEqual(self.notion.pages["old-ready"]["properties"]["stage"]["select"]["name"], "Ready to Send")
-            self.assertFalse(any(id_ == "old-ready" for id_, _ in self.notion.writes))
-            self.notion.pages["old-ready"]["properties"]["stage"]["select"]["name"] = "AI Queue"
-            self.requalify("old-ready")
+            self.assertEqual(self.notion.pages["oldready"]["properties"]["stage"]["select"]["name"], "Ready to Send")
+            self.assertFalse(any(id_ == "oldready" for id_, _ in self.notion.writes))
+            self.notion.pages["oldready"]["properties"]["stage"]["select"]["name"] = "AI Queue"
+            self.requalify("oldready")
             self.assertEqual(self.sync(), 1)
             self.assertEqual(self.sync(), 1)
 
@@ -512,6 +512,9 @@ class IntegrationTests(unittest.TestCase):
                 else:
                     page = transition(page, "Needs Research")
                     page["properties"]["stage"]["select"]["name"] = "Ready to Send"
+                if problem in {"missing", "malformed"}:
+                    # Newly created Ready rows must be routed, unlike legacy rows.
+                    page["created_time"] = "2026-10-08T12:01:00+00:00"
                 self.notion = FakeNotion([page])
                 with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
                      patch("pipeline.NotionSession", return_value=self.notion), \
