@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -87,6 +88,21 @@ def receipt(page: dict) -> dict | None:
         return None
 
 
+def grandfathered_without_receipt(page: dict) -> bool:
+    """Never downgrade pre-cutover prospects merely for lacking new AI receipts.
+
+    Old pages remain untouched and do not earn credit. Any new AI approval,
+    including one for an old page explicitly requeued, writes a normal receipt.
+    """
+    raw = os.getenv("OUTREACH_COUNTER_CUTOVER_AT", "").strip()
+    if not raw or receipt(page) is not None:
+        return False
+    created = page.get("created_time")
+    if not created:
+        raise ValueError("Missing created_time; cannot safely distinguish legacy rows")
+    return utc_time(created) < utc_time(raw)
+
+
 def fields_valid(page: dict) -> bool:
     candidate = candidate_from_page(page)
     handle = profile(page)
@@ -143,6 +159,8 @@ def receipt_properties(proof: dict) -> dict:
 def reconcile(page: dict, stage_id: str, now: datetime) -> dict:
     """Return only needed metadata patches. Receipt is the crash-recovery source."""
     proof = receipt(page)
+    if grandfathered_without_receipt(page):
+        return {}  # Existing prospect stays as-is; it is never counted without AI proof.
     review = {}
     if (not page.get("archived") and not page.get("in_trash")
             and stage(page, stage_id) == "Ready to Send"

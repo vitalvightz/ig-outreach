@@ -13,6 +13,7 @@ from daily_counter import NotionSession, apply_properties, ensure_schema, sync_c
 from qualification import (
     RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
     reconcile, receipt_properties, research_fingerprint, today_bounds,
+    grandfathered_without_receipt,
 )
 
 from core import (
@@ -142,6 +143,8 @@ def _update_daily_progress_counter(session, settings, *, now=None, stage_propert
 
 def _ready_row_needs_repair(page: dict[str, Any], *, now: datetime | None = None) -> bool:
     """A complete-looking draft is unsafe without a current, active AI approval."""
+    if grandfathered_without_receipt(page):
+        return False
     return not approval_valid(page, now or datetime.now(timezone.utc), unsent=True)
 
 
@@ -376,6 +379,13 @@ def update_ai_result(
 
 def run_outreach() -> int:
     settings = Settings.from_env(require_openai=os.getenv("COUNTER_ONLY", "").lower() != "true")
+    # An omitted cutover would reclassify historical Ready-to-Send prospects.
+    if not settings.dry_run:
+        raw_cutover = os.getenv("OUTREACH_COUNTER_CUTOVER_AT", "").strip()
+        if not raw_cutover:
+            raise RuntimeError("OUTREACH_COUNTER_CUTOVER_AT is required for live outreach")
+        from qualification import utc_time
+        utc_time(raw_cutover)
     session = NotionSession()
 
     stage_property_id = _resolve_stage_property_id(session, settings)
