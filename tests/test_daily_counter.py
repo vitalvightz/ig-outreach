@@ -15,7 +15,7 @@ from migrate_counter import backfill_properties
 from pipeline import _ready_row_needs_repair, query_ai_queue, run_outreach, update_ai_result
 from qualification import (COMPLETED_STAGES, QUALIFIED_AT, RECEIPT, count_today,
                            fingerprint, new_receipt, receipt, receipt_properties,
-                           reconcile, today_bounds)
+                           reconcile, today_bounds, grandfathered_without_receipt)
 
 NOW = datetime(2026, 10, 8, 12, tzinfo=timezone.utc)
 SETTINGS = Settings("unused", "unused", "source", "unused", 100, False)
@@ -52,6 +52,34 @@ def transition(page, name, now=NOW):
 
 
 class QualificationTests(unittest.TestCase):
+    def test_forward_cutover_preserves_legacy_ready_without_credit(self):
+        old = prospect("legacy", qualified=False)
+        fresh = prospect("new", qualified=False)
+        fresh["created_time"] = "2026-10-08T12:01:00+00:00"
+        with patch.dict("os.environ", {"OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertTrue(grandfathered_without_receipt(old))
+            self.assertFalse(grandfathered_without_receipt(fresh))
+            self.assertEqual(reconcile(old, "stage", NOW), {})
+            self.assertFalse(_ready_row_needs_repair(old, now=NOW))
+            self.assertEqual(count_today([old], "stage", NOW), 0)
+            self.assertEqual(reconcile(fresh, "stage", NOW)["stage"]["select"]["name"], "Needs Research")
+            self.assertTrue(_ready_row_needs_repair(fresh, now=NOW))
+
+    def test_explicit_new_ai_approval_of_old_page_counts_from_today(self):
+        old = prospect("legacy", qualified=False)
+        with patch.dict("os.environ", {"OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(reconcile(old, "stage", NOW), {})
+            approved = apply_properties(old, receipt_properties(new_receipt(old, NOW.isoformat())))
+            self.assertFalse(grandfathered_without_receipt(approved))
+            self.assertEqual(count_today([approved], "stage", NOW), 1)
+
+    def test_legacy_cutover_requires_parseable_created_time(self):
+        old = prospect("legacy", qualified=False)
+        del old["created_time"]
+        with patch.dict("os.environ", {"OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            with self.assertRaises(ValueError):
+                reconcile(old, "stage", NOW)
+
     def test_22_to_21_to_22_and_repeated_updates(self):
         pages = [prospect(f"p{i}") for i in range(22)]
         self.assertEqual(count_today(pages, "stage", NOW), 22)
@@ -372,6 +400,18 @@ class IntegrationTests(unittest.TestCase):
 
     def sync(self, now=NOW, settings=SETTINGS):
         return sync_counter(self.notion, settings, "stage", "counter", now=now, state_path=self.path)
+
+    def test_forward_cutover_keeps_legacy_in_notion_and_starts_at_zero(self):
+        old = prospect("old-ready", qualified=False)
+        self.notion = FakeNotion([old])
+        with patch.dict("os.environ", {"OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(self.sync(), 0)
+            self.assertEqual(self.notion.pages["old-ready"]["properties"]["stage"]["select"]["name"], "Ready to Send")
+            self.assertFalse(any(id_ == "old-ready" for id_, _ in self.notion.writes))
+            self.notion.pages["old-ready"]["properties"]["stage"]["select"]["name"] = "AI Queue"
+            self.requalify("old-ready")
+            self.assertEqual(self.sync(), 1)
+            self.assertEqual(self.sync(), 1)
 
     def test_incremental_22_21_22_idempotent_and_paginated(self):
         self.assertEqual(self.sync(), 22)
