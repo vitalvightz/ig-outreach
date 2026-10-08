@@ -52,6 +52,14 @@ def transition(page, name, now=NOW):
 
 
 class QualificationTests(unittest.TestCase):
+    def test_live_worker_refuses_missing_or_invalid_cutover(self):
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), patch.dict("os.environ", {"COUNTER_ONLY": "true", "OUTREACH_COUNTER_CUTOVER_AT": ""}):
+            with self.assertRaisesRegex(RuntimeError, "OUTREACH_COUNTER_CUTOVER_AT"):
+                run_outreach()
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), patch.dict("os.environ", {"COUNTER_ONLY": "true", "OUTREACH_COUNTER_CUTOVER_AT": "not-a-date"}):
+            with self.assertRaises(ValueError):
+                run_outreach()
+
     def test_forward_cutover_preserves_legacy_ready_without_credit(self):
         old = prospect("legacy", qualified=False)
         fresh = prospect("new", qualified=False)
@@ -510,7 +518,7 @@ class IntegrationTests(unittest.TestCase):
                      patch("pipeline._resolve_stage_property_id", return_value="stage"), \
                      patch("pipeline.query_ai_queue", return_value=[page]), \
                      patch("pipeline.OpenAI"), patch("pipeline.qualify_and_draft") as ai, \
-                     patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true", "COUNTER_ONLY": "false"}):
+                     patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true", "COUNTER_ONLY": "false", "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
                     self.assertEqual(run_outreach(), 0)
                     ai.assert_not_called()
                 self.assertEqual(self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"], "Needs Research")
@@ -703,7 +711,7 @@ class IntegrationTests(unittest.TestCase):
     def test_counter_only_has_no_openai_calls_and_reports_failure(self, settings, session, stage, openai):
         settings.return_value = SETTINGS
         session.return_value = self.notion
-        with patch.dict("os.environ", {"COUNTER_ONLY": "true", "OUTREACH_COUNTER_STATE": self.path,
+        with patch.dict("os.environ", {"COUNTER_ONLY": "true", "OUTREACH_COUNTER_STATE": self.path, "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat(),
                                        "NOTION_DAILY_COUNTER_PAGE_ID": "counter"}):
             with patch("pipeline.DAILY_COUNTER_PAGE_ID", "counter"):
                 self.assertEqual(run_outreach(), 0)
