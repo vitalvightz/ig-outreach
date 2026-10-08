@@ -237,7 +237,7 @@ def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
         or not (properties.get("Instagram Handle") or {}).get("rich_text")
         or not (properties.get("Outreach Approach") or {}).get("select")
         or fight_date_issue(
-            candidate_from_page(page),
+            {"personalised_dm_angle": _plain_text(properties.get("Personalised DM Angle"))},
             draft=_plain_text(properties.get("Draft DM")),
             approach=_select_value(properties.get("Outreach Approach")),
         ) is not None
