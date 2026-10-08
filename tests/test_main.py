@@ -15,6 +15,14 @@ class OutreachLogicTests(unittest.TestCase):
         athlete = {"personalised_dm_angle": "LOCKED IN 26TH SEPT 2026 Bowliers Trafford Park"}
         self.assertEqual(fight_date_issue(athlete, draft="saw you've got Bowliers locked in", today=date(2026, 10, 8))[0], "Rejected")
 
+    def test_expired_month_year_fight_is_rejected(self):
+        athlete = {"personalised_dm_angle": "upcoming fight September 2026"}
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Rejected")
+
+    def test_numeric_short_year_fight_is_rejected(self):
+        athlete = {"personalised_dm_angle": "LOCKED IN 26/09/26 fight card"}
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Rejected")
+
     def test_unanchored_relative_fight_needs_research(self):
         athlete = {"personalised_dm_angle": "2 weeks out world championships"}
         self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Needs Research")
