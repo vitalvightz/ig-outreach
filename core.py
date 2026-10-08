@@ -150,10 +150,11 @@ _MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name
 _MONTHS.update({name.lower(): i for i, name in enumerate(calendar.month_abbr) if name})
 _MONTHS["sept"] = 9
 _MONTH_PATTERN = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTH_YEAR_RE = re.compile(rf"\b(?P<month>{_MONTH_PATTERN})\s+(?P<year>20\d{{2}})\b", re.IGNORECASE)
 _FIGHT_DATE_RE = re.compile(
     rf"\b(?:(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<m1>{_MONTH_PATTERN})\.?(?:,?\s+(?P<y1>20\d{{2}}))?"
     rf"|(?P<m2>{_MONTH_PATTERN})\.?\s+(?P<d2>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y2>20\d{{2}}))?"
-    rf"|(?P<d3>\d{{1,2}})/(?P<m3>\d{{1,2}})/(?P<y3>20\d{{2}})"
+    rf"|(?P<d3>\d{{1,2}})/(?P<m3>\d{{1,2}})/(?P<y3>(?:20)?\d{{2}})"
     rf"|(?P<y4>20\d{{2}})-(?P<m4>\d{{1,2}})-(?P<d4>\d{{1,2}}))\b",
     re.IGNORECASE,
 )
@@ -184,7 +185,7 @@ def _fight_dates(text: str) -> list[date]:
         day = g["d1"] or g["d2"] or g["d3"] or g["d4"]
         month = g["m1"] or g["m2"] or g["m3"] or g["m4"]
         try:
-            dates.append(date(int(year), _MONTHS[month.lower()] if month.lower() in _MONTHS else int(month), int(day)))
+            dates.append(date(int(year) + (2000 if len(year) == 2 else 0), _MONTHS[month.lower()] if month.lower() in _MONTHS else int(month), int(day)))
         except ValueError:
             continue
     return dates
@@ -205,6 +206,12 @@ def fight_date_issue(
             continue
         is_upcoming = bool(_UPCOMING_RE.search(part))
         upcoming |= is_upcoming
+        if is_upcoming:
+            for month_year in _MONTH_YEAR_RE.finditer(part):
+                month_number = _MONTHS[month_year["month"].lower()]
+                year_number = int(month_year["year"])
+                if (year_number, month_number) < (today.year, today.month):
+                    return "Rejected", f"Rejected: purported upcoming fight was in {month_year['month']} {year_number}, before today ({today:%d %B %Y})."
         partial_date |= bool(_FIGHT_DATE_RE.search(part)) and not bool(_fight_dates(part))
         for fight_date in _fight_dates(part):
             (future if fight_date >= today else past).append(fight_date)
