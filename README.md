@@ -109,6 +109,10 @@ The default model is `gpt-5.6-luna` for this structured classification/drafting 
 The counter requires a successful structured AI approval, complete research/AI
 outputs and a valid completed Stage. It deduplicates Instagram profiles and credits
 `Qualified At` in Europe/London, including negative adjustments after revocation.
+Follow-up edits to Notes, Location, Gym and similar context preserve existing
+approval and credit. Invalid Ready to Send approvals move to Needs Research.
+Restoring a completed Stage cannot reactivate approval: request AI Queue and obtain
+a fresh successful AI decision before earning new credit.
 The target remains 50 and the existing minimal Notion UI is preserved.
 
 Before running this revision in production, follow

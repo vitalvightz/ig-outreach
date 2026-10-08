@@ -10,13 +10,13 @@ import requests
 from openai import OpenAI
 
 from daily_counter import NotionSession, apply_properties, ensure_schema, sync_counter
-from qualification import (RECEIPT, QUALIFIED_AT, fingerprint, new_receipt, receipt,
-                           receipt_properties, research_fingerprint, today_bounds)
+from qualification import (
+    RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
+    reconcile, receipt_properties, research_fingerprint, today_bounds,
+)
 
 from core import (
     Settings,
-    _plain_text,
-    _select_value,
     fight_date_issue,
     _notion_headers,
     _rich_text_value,
@@ -140,23 +140,9 @@ def _update_daily_progress_counter(session, settings, *, now=None, stage_propert
     return sync_counter(session, settings, stage_property_id, DAILY_COUNTER_PAGE_ID, now=now)
 
 
-def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
-    """Ready-to-send rows must have the full AI-owned output set."""
-    properties = page.get("properties", {})
-    score = (properties.get("Priority Score") or {}).get("number")
-    return (
-        score is None
-        or score <= 0
-        or not (properties.get("AI Qualification Reason") or {}).get("rich_text")
-        or not (properties.get("Draft DM") or {}).get("rich_text")
-        or not (properties.get("Instagram Handle") or {}).get("rich_text")
-        or not (properties.get("Outreach Approach") or {}).get("select")
-        or fight_date_issue(
-            {"personalised_dm_angle": _plain_text(properties.get("Personalised DM Angle"))},
-            draft=_plain_text(properties.get("Draft DM")),
-            approach=_select_value(properties.get("Outreach Approach")),
-        ) is not None
-    )
+def _ready_row_needs_repair(page: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """A complete-looking draft is unsafe without a current, active AI approval."""
+    return not approval_valid(page, now or datetime.now(timezone.utc), unsent=True)
 
 
 def query_ai_queue(
@@ -428,6 +414,21 @@ def run_outreach() -> int:
     for page in pages:
         candidate = candidate_from_page(page)
         label = candidate["candidate"] or candidate["instagram_handle"] or candidate["page_id"]
+
+        if _stage_value(page, stage_property_id) == READY_TO_SEND and _ready_row_needs_repair(page):
+            try:
+                current = _retrieve_target_page(session, settings, candidate["page_id"])
+                changes = reconcile(current, stage_property_id, datetime.now(timezone.utc))
+                if _stage_value(current, stage_property_id) == READY_TO_SEND and changes:
+                    _patch_page(session, settings, candidate["page_id"], changes)
+                    processed += 1
+                    print(f"Needs Research: {label} — approval requires an explicit AI Queue recheck")
+                else:
+                    skipped += 1
+            except Exception as exc:
+                failed += 1
+                print(f"ERROR: {label}: {exc}", file=sys.stderr)
+            continue
 
         if _is_empty_row(candidate):
             skipped += 1

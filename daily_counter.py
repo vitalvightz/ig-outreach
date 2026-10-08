@@ -13,7 +13,7 @@ from pathlib import Path
 import requests
 
 from core import _notion_headers, candidate_from_page
-from qualification import (QUALIFIED_AT, RECEIPT, count_today, genuinely_qualified,
+from qualification import (QUALIFIED_AT, RECEIPT, count_today,
                            profile, receipt, reconcile, today_bounds, utc_time)
 
 
@@ -84,7 +84,11 @@ def apply_properties(page, properties):
         if "rich_text" in prop:
             for item in prop["rich_text"]:
                 item["plain_text"] = item["text"]["content"]
-        page["properties"][name] = prop
+        key = next((key for key, old in page["properties"].items()
+                    if key == name or old.get("id") == name), name)
+        if "id" in page["properties"].get(key, {}):
+            prop["id"] = page["properties"][key]["id"]
+        page["properties"][key] = prop
     return page
 
 
@@ -149,10 +153,6 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
                 todays_handles.add(profile(page))
                 if id_ not in live_ids and id_ not in changed_ids:
                     cached[id_] = dict(page, archived=True)
-        for page in cached.values():
-            proof = receipt(page)
-            if proof and not proof["active"] and genuinely_qualified(page, stage_id, now):
-                todays_handles.add(profile(page))
         for page in live_today:
             cached[page["id"]] = page
             todays_handles.add(profile(page))
@@ -176,6 +176,11 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
                 cached[id_] = dict(page, archived=True)
         for id_, page in list(cached.items()):
             properties = reconcile(page, stage_id, now)
+            if stage_id in properties and not settings.dry_run:
+                # A stale Ready snapshot must never regress a newly Contacted row.
+                page = api(session, settings, "get", f"pages/{id_}")
+                cached[id_] = page
+                properties = reconcile(page, stage_id, now)
             if properties:
                 if not settings.dry_run and not page.get("archived") and not page.get("in_trash"):
                     api(session, settings, "patch", f"pages/{id_}", json={"properties": properties})

@@ -12,7 +12,7 @@ import requests
 from core import Settings, candidate_from_page
 from daily_counter import NotionSession, apply_properties, ensure_schema, query_all, sync_counter
 from migrate_counter import backfill_properties
-from pipeline import run_outreach, update_ai_result
+from pipeline import _ready_row_needs_repair, query_ai_queue, run_outreach, update_ai_result
 from qualification import (COMPLETED_STAGES, QUALIFIED_AT, RECEIPT, count_today,
                            fingerprint, new_receipt, receipt, receipt_properties,
                            reconcile, today_bounds)
@@ -59,10 +59,87 @@ class QualificationTests(unittest.TestCase):
         self.assertIsNone(receipt(pages[0])["at"])
         self.assertEqual(count_today(pages, "stage", NOW), 21)
         pages[0] = transition(pages[0], "Ready to Send")
+        self.assertEqual(count_today(pages, "stage", NOW), 21)
+        self.assertEqual(pages[0]["properties"]["stage"]["select"]["name"], "Needs Research")
+        pages[0] = apply_properties(pages[0], receipt_properties(new_receipt(pages[0], NOW.isoformat())))
+        pages[0] = transition(pages[0], "Ready to Send")
         self.assertEqual(count_today(pages, "stage", NOW), 22)
         pages[0] = transition(pages[0], "Ready to Send")
         self.assertEqual(count_today(pages, "stage", NOW), 22)
         self.assertEqual(reconcile(pages[0], "stage", NOW), {})
+
+    def test_follow_up_fields_preserve_approval_in_every_completed_stage(self):
+        updates = {
+            "Notes": text("Spoke to athlete; follow up next week"),
+            "Location": text("Updated location"), "City": text("London"),
+            "Gym": text("Updated gym"), "Source Detail": text("Updated referral notes"),
+            "Source": {"type": "select", "select": {"name": "Athlete referral"}},
+            "Experience": {"type": "select", "select": {"name": "Professional"}},
+            "Date Contacted": {"type": "date", "date": {"start": "2026-10-08"}},
+            "Follow-Up Count": {"type": "number", "number": 2},
+        }
+        for completed_stage in COMPLETED_STAGES:
+            with self.subTest(stage=completed_stage):
+                page = prospect(stage=completed_stage)
+                before = receipt(page)
+                page["properties"].update(copy.deepcopy(updates))
+                self.assertEqual(reconcile(page, "stage", NOW), {})
+                self.assertEqual(receipt(page), before)
+                self.assertEqual(count_today([page], "stage", NOW), 1)
+                self.assertFalse(_ready_row_needs_repair(page, now=NOW))
+
+    def test_critical_evidence_edit_revokes_and_routes_ready_for_review(self):
+        page = prospect()
+        page["properties"]["Personalised DM Angle"] = text("Changed personalisation evidence")
+        self.assertTrue(_ready_row_needs_repair(page, now=NOW))
+        page = apply_properties(page, reconcile(page, "stage", NOW))
+        self.assertEqual(page["properties"]["stage"]["select"]["name"], "Needs Research")
+        self.assertFalse(receipt(page)["active"])
+        self.assertIsNone(receipt(page)["at"])
+        self.assertEqual(count_today([page], "stage", NOW), 0)
+
+    def test_restoring_original_evidence_cannot_reactivate_revoked_approval(self):
+        page = prospect()
+        original = copy.deepcopy(page["properties"]["Personalised DM Angle"])
+        page["properties"]["Personalised DM Angle"] = text("Changed research")
+        page = apply_properties(page, reconcile(page, "stage", NOW))
+        page["properties"]["Personalised DM Angle"] = original
+        page = transition(page, "Ready to Send")
+        self.assertFalse(receipt(page)["active"])
+        self.assertIsNone(receipt(page)["at"])
+        self.assertEqual(count_today([page], "stage", NOW), 0)
+
+    def test_manual_stage_restore_cannot_reactivate_any_completed_stage(self):
+        for completed_stage in COMPLETED_STAGES:
+            with self.subTest(stage=completed_stage):
+                page = transition(prospect(), "Needs Research")
+                page = transition(page, completed_stage)
+                self.assertFalse(receipt(page)["active"])
+                self.assertIsNone(receipt(page)["at"])
+                self.assertIsNone(page["properties"][QUALIFIED_AT]["date"])
+                self.assertEqual(count_today([page], "stage", NOW), 0)
+                self.assertEqual(reconcile(page, "stage", NOW), {})
+
+    def test_receipt_v1_requires_review_instead_of_silent_scope_conversion(self):
+        page = prospect()
+        old = dict(receipt(page), version=1)
+        page = apply_properties(page, receipt_properties(old))
+        self.assertIsNone(receipt(page))
+        page = apply_properties(page, reconcile(page, "stage", NOW))
+        self.assertEqual(page["properties"]["stage"]["select"]["name"], "Needs Research")
+        self.assertEqual(count_today([page], "stage", NOW), 0)
+
+    def test_ready_fight_expiry_requires_review_but_sent_approval_survives(self):
+        page = prospect(at=datetime(2026, 10, 7, 12, tzinfo=timezone.utc))
+        page["properties"]["Personalised DM Angle"] = text("Upcoming fight on 7 October 2026")
+        page["properties"]["Draft DM"] = text("Saw your fight on 7 October 2026 coming up")
+        page = apply_properties(page, receipt_properties(new_receipt(page, "2026-10-07T12:00:00Z")))
+        self.assertTrue(_ready_row_needs_repair(page, now=NOW))
+        ready = apply_properties(page, reconcile(page, "stage", NOW))
+        self.assertEqual(ready["properties"]["stage"]["select"]["name"], "Needs Research")
+        contacted = transition(page, "Contacted")
+        self.assertTrue(receipt(contacted)["active"])
+        self.assertEqual(receipt(contacted)["at"], "2026-10-07T12:00:00.000+00:00")
 
     def test_monday_created_tuesday_qualified(self):
         tuesday = datetime(2026, 10, 6, 10, tzinfo=timezone.utc)
@@ -185,6 +262,10 @@ class QualificationTests(unittest.TestCase):
         self.assertEqual(reconcile(page, "stage", NOW), {})
         self.assertEqual(count_today([page], "stage", NOW), 0)
         page = transition(transition(page, "Needs Research"), "Ready to Send")
+        self.assertEqual(count_today([page], "stage", NOW), 0)
+        self.assertFalse(receipt(page)["active"])
+        page = apply_properties(page, receipt_properties(new_receipt(page, NOW.isoformat())))
+        page = transition(page, "Ready to Send")
         self.assertEqual(count_today([page], "stage", NOW), 1)
 
     def test_migration_rejects_heuristics_stale_data_today_and_naive_dates(self):
@@ -279,6 +360,16 @@ class IntegrationTests(unittest.TestCase):
         self.path = str(Path(self.tmp.name) / "state.sqlite3")
         self.notion = FakeNotion([prospect(f"p{i}") for i in range(22)])
 
+    def requalify(self, id_, now=NOW):
+        page = self.notion.pages[id_]
+        page["properties"]["stage"]["select"]["name"] = "AI Queue"
+        result = {"eligible": True, "evidence_sufficient": True, "priority_score": 45,
+                  "qualification_reason": "Eligible and sufficient", "outreach_approach": "A",
+                  "draft_dm": "Yo, saw your training."}
+        with patch("pipeline.datetime") as clock:
+            clock.now.return_value = now
+            update_ai_result(self.notion, SETTINGS, candidate_from_page(page), result, stage_property_id="stage")
+
     def sync(self, now=NOW, settings=SETTINGS):
         return sync_counter(self.notion, settings, "stage", "counter", now=now, state_path=self.path)
 
@@ -287,9 +378,116 @@ class IntegrationTests(unittest.TestCase):
         self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Needs Research")
         self.assertEqual(self.sync(), 21)
         self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Ready to Send")
+        self.assertEqual(self.sync(), 21)
+        self.requalify("p0")
         self.assertEqual(self.sync(), 22)
         self.assertEqual(self.sync(), 22)
         self.assertTrue(any("last_edited_time" in q.get("filter", {}) for q in self.notion.queries))
+
+    def test_counter_follow_up_edits_preserve_22_and_original_timestamp(self):
+        self.sync()
+        page = self.notion.pages["p0"]
+        page["properties"]["stage"]["select"]["name"] = "Contacted"
+        before = receipt(page)["at"]
+        page["properties"].update({"Notes": text("Follow-up note"), "Location": text("London"),
+                                   "Gym": text("New gym")})
+        page["last_edited_time"] = (NOW + timedelta(minutes=2)).isoformat()
+        self.assertEqual(self.sync(NOW + timedelta(minutes=2)), 22)
+        self.assertEqual(receipt(self.notion.pages["p0"])["at"], before)
+
+    def test_counter_routes_old_ready_beyond_worker_batch_limit(self):
+        self.sync()
+        page = self.notion.pages["p0"]
+        page["created_time"] = "2020-01-01T12:00:00Z"
+        page["properties"]["Personalised DM Angle"] = text("New evidence")
+        page["last_edited_time"] = (NOW + timedelta(minutes=2)).isoformat()
+        self.assertEqual(self.sync(NOW + timedelta(minutes=2)), 21)
+        self.assertEqual(self.notion.pages["p0"]["properties"]["stage"]["select"]["name"], "Needs Research")
+        self.assertEqual(self.sync(NOW + timedelta(minutes=4)), 21)
+
+    def test_counter_missing_receipt_moves_ready_to_research_without_changing_data(self):
+        page = prospect(qualified=False)
+        self.notion.pages = {page["id"]: page}
+        before = copy.deepcopy(page["properties"])
+        self.assertEqual(self.sync(), 0)
+        actual = self.notion.pages[page["id"]]["properties"]
+        self.assertEqual(actual["stage"]["select"]["name"], "Needs Research")
+        for name in before:
+            if name != "stage":
+                self.assertEqual(actual[name], before[name])
+
+    def test_routing_by_stage_id_preserves_live_property_label(self):
+        page = prospect()
+        page["properties"]["Stage (AI Fills First)"] = page["properties"].pop("stage")
+        page["properties"]["Personalised DM Angle"] = text("Changed evidence")
+        self.notion.pages = {page["id"]: page}
+        self.assertEqual(self.sync(), 0)
+        actual = self.notion.pages[page["id"]]["properties"]
+        self.assertNotIn("stage", actual)
+        self.assertEqual(actual["Stage (AI Fills First)"]["id"], "stage")
+        self.assertEqual(actual["Stage (AI Fills First)"]["select"]["name"], "Needs Research")
+
+    def test_routing_rechecks_contacted_edit_before_patching_stage(self):
+        page = prospect(qualified=False)
+        self.notion.pages = {page["id"]: page}
+        original_get = self.notion.get
+        def contacted_before_get(url, **kwargs):
+            if "/pages/" in url:
+                self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"] = "Contacted"
+            return original_get(url, **kwargs)
+        self.notion.get = contacted_before_get
+        self.assertEqual(self.sync(), 0)
+        self.assertEqual(self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"], "Contacted")
+        self.assertFalse(any("stage" in body["properties"] for _, body in self.notion.writes))
+
+    def test_queue_detects_receipt_problems_even_with_complete_ai_outputs(self):
+        valid = prospect("valid")
+        missing = prospect("missing", qualified=False)
+        changed = prospect("changed")
+        changed["properties"]["Personalised DM Angle"] = text("Changed evidence")
+        inactive = transition(prospect("inactive"), "Needs Research")
+        inactive["properties"]["stage"]["select"]["name"] = "Ready to Send"
+        with patch("pipeline._query_stage_filter", side_effect=[[valid, missing, changed, inactive], [], []]):
+            pages = query_ai_queue(self.notion, SETTINGS, "stage")
+        self.assertEqual([page["id"] for page in pages], ["missing", "changed", "inactive"])
+
+    def test_worker_routes_invalid_ready_without_automatic_ai_approval(self):
+        for problem in ("missing", "malformed", "changed", "inactive"):
+            with self.subTest(problem=problem):
+                page = prospect()
+                if problem == "missing":
+                    del page["properties"][RECEIPT]
+                elif problem == "malformed":
+                    page["properties"][RECEIPT] = text("{broken")
+                elif problem == "changed":
+                    page["properties"]["Personalised DM Angle"] = text("New evidence")
+                else:
+                    page = transition(page, "Needs Research")
+                    page["properties"]["stage"]["select"]["name"] = "Ready to Send"
+                self.notion = FakeNotion([page])
+                with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+                     patch("pipeline.NotionSession", return_value=self.notion), \
+                     patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+                     patch("pipeline.query_ai_queue", return_value=[page]), \
+                     patch("pipeline.OpenAI"), patch("pipeline.qualify_and_draft") as ai, \
+                     patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true", "COUNTER_ONLY": "false"}):
+                    self.assertEqual(run_outreach(), 0)
+                    ai.assert_not_called()
+                self.assertEqual(self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"], "Needs Research")
+                self.assertEqual(self.notion.pages[page["id"]]["properties"]["Draft DM"], page["properties"]["Draft DM"])
+
+    def test_fresh_ai_requalification_gets_new_date_then_retries_stay_once(self):
+        self.sync()
+        old_at = receipt(self.notion.pages["p0"])["at"]
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Needs Research")
+        self.assertEqual(self.sync(), 21)
+        tomorrow = NOW + timedelta(days=1)
+        self.requalify("p0", now=tomorrow)
+        self.assertEqual(self.sync(tomorrow), 1)
+        new_at = receipt(self.notion.pages["p0"])["at"]
+        self.assertNotEqual(new_at, old_at)
+        self.assertEqual(self.sync(tomorrow + timedelta(minutes=2)), 1)
+        self.assertEqual(receipt(self.notion.pages["p0"])["at"], new_at)
 
     def test_archive_disappears_from_delta_but_counter_decreases(self):
         self.sync()
@@ -303,8 +501,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.sync(), 0)
         self.notion.pages["old"]["archived"] = True
         self.assertEqual(self.sync(NOW + timedelta(minutes=10)), 1)
-        # A manual requalification from an inactive receipt with no Qualified At
-        # also discovers historical owners before computing the number.
+        # A manual Stage restore cannot reactivate approval or award credit.
         self.notion.pages["old"]["archived"] = False
         current = transition(current, "Needs Research")
         current["properties"]["stage"]["select"]["name"] = "Ready to Send"
@@ -358,6 +555,8 @@ class IntegrationTests(unittest.TestCase):
         self.notion.fail_counter = False
         self.assertEqual(self.sync(), 21)
         self.notion.pages["p0"]["properties"]["stage"]["select"]["name"] = "Ready to Send"
+        self.assertEqual(self.sync(), 21)
+        self.requalify("p0")
         self.notion.fail_counter = True
         with self.assertRaises(requests.HTTPError):
             self.sync()

@@ -25,20 +25,35 @@ The old Daily Complete formula is not a source for this counter.
 
 A contributor must have valid human inputs, a handle matching the verified URL,
 Boxing sport, complete AI outputs, and a worker-written structured success receipt
-bound to that page and the current inputs/outputs. Neither free text nor score
-thresholds establish success. Stage must be one of Ready to Send, Contacted,
+bound to that page, its qualification-critical inputs and AI outputs. Critical
+inputs are Candidate, canonical Verified Profile URL, Instagram Handle, Sport and
+Personalised DM Angle. Notes, Location, City, Gym, Source, Source Detail,
+Experience and contact/follow-up fields are ordinary editable context: changing
+them does not revoke existing approval or subtract credit, including after Contacted.
+The AI still receives this context when an explicit AI Queue recheck is requested;
+the worker's concurrent-edit guard checks all AI inputs before writing its decision.
+Neither free text nor score thresholds establish success. Stage must be one of Ready to Send, Contacted,
 Replied, Applied, Accepted, Reserve or Activated. The existing fight-date safety
 check still applies to unsent Ready to Send drafts; sent prospects do not lose
 qualification merely because a fight date later passes.
 
 Approval and Qualified At are written in the same prospect PATCH. A valid stage
 progression preserves the date. An observed disqualification clears the date and
-marks its receipt inactive. Returning identical, already-approved data to a valid
-stage gives a new timestamp; changed research or outputs need an AI Queue recheck.
+marks its receipt inactive. Restoring a completed Stage or reverting evidence to
+its original contents cannot reactivate that receipt or create a new timestamp.
+A fresh successful AI decision after an AI Queue recheck is required for new credit.
+Any Ready to Send row with a missing, malformed, revoked or mismatched receipt,
+missing outputs, invalid critical inputs or expired unsent fight evidence is moved
+to Needs Research. The counter checks all cached prospects independently of the
+worker's limited newest-Ready batch, so older invalid rows cannot stay stuck.
+The worker also detects and routes invalid Ready rows without automatically billing
+an AI call. Existing drafts and research are retained during this routing. Fix the
+critical fields, then explicitly set AI Queue. Routing rechecks the live Stage before
+patching so a newly Contacted row is not moved backwards.
 A real AI rejection/failure to qualify clears the approval. An API/AI exception
 cannot create approval. The date mirror is repaired from the receipt on retries.
-Requalifications use the observed Notion edit timestamp; successful AI approvals
-use the timestamp when the result is written, not creation time. All dates are UTC
+Requalification timestamps come only from the fresh successful AI result write,
+not from a manual Stage edit or creation time. All dates are UTC
 instants; day boundaries use Europe/London's timezone database (23/25-hour DST days).
 
 Profiles are deduplicated by the verified URL's lowercase Instagram username,
@@ -56,6 +71,13 @@ Two new system-owned fields are required:
 - `AI Qualification Receipt`: rich_text. Versioned structured success, fingerprints,
   current qualification timestamp, and legacy/revoked state. Hide both fields from
   the intern views if Notion displays newly added properties automatically.
+
+The corrected receipt uses version 2 to distinguish the qualification-critical
+fingerprint from the earlier PR's broad research fingerprint. No live migration has
+been performed. Generate a new inventory/approval manifest from this revision;
+do not reuse a fingerprint inventory from the earlier PR. Version 1 receipts, if
+any were created during private testing, require an explicit approval audit/backfill
+or fresh AI Queue decision; they are never silently upgraded into valid approvals.
 
 The script adds only missing fields. It refuses mismatched existing property types
 and never replaces a formula, view, or existing prospect property.
@@ -84,8 +106,8 @@ and never replaces a formula, view, or existing prospect property.
 4. Use an original timezone-aware qualification timestamp only when provable.
    Never infer it from creation time or last_edited_time. Unknown historical times
    stay null: the receipt is marked legacy, approval survives, and the row receives
-   no daily credit until it is revoked and qualifies again. For an optional fresh
-   AI audit of a legacy row, record that result as historical validation with null
+   no daily credit until it is revoked and receives a fresh successful AI
+   requalification. For an optional fresh AI audit of a legacy row, record that result as historical validation with null
    time; do not claim today's productivity for it. The script does not bill OpenAI.
    Every supplied date must precede the manifest's fixed export cutoff. An example:
 
@@ -162,8 +184,11 @@ logs and nonzero process exit indicate that it is stale. Never substitute zero
 for a failed query. After recovery the next complete pass recomputes the number.
 
 Check `journalctl -u unlxck-counter.service` and timer status. Confirm a genuinely
-approved test row increments, Needs Research decrements, unchanged Ready to Send
-requalification increments once, Contacted/Replied preserves credit, and archive
+approved test row increments, Needs Research decrements, a manual Ready to Send
+restore stays uncounted and moves back to Needs Research, and an AI Queue recheck
+with fresh approval increments once. Confirm Notes/Location/Gym and other follow-up
+edits retain both credit and Qualified At after Contacted/Replied, critical edits
+route invalid Ready rows to Needs Research, and archive
 removal decrements. Verify the intern's Add/Fix and Send DMs views and the existing
 Profile URL formula. Confirm London midnight resets and weekend timer activity.
 Unit regression coverage runs with `python -m unittest discover -s tests -v`.

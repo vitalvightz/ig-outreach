@@ -2,6 +2,8 @@ import unittest
 from datetime import datetime, timezone
 
 from core import instagram_handle_from_profile_url, verified_profile_reason
+from daily_counter import apply_properties
+from qualification import new_receipt, receipt_properties
 from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
@@ -107,17 +109,20 @@ class PipelineStageTests(unittest.TestCase):
         self.assertTrue(_ready_row_needs_repair(page))
 
     def test_complete_ready_row_is_not_reprocessed(self):
-        page = {
-            "properties": {
-                "Priority Score": {"number": 70},
-                "AI Qualification Reason": {"rich_text": [{"plain_text": "Qualified"}]},
-                "Draft DM": {"rich_text": [{"plain_text": "Yo..."}]},
-                "Instagram Handle": {"rich_text": [{"plain_text": "fighter"}]},
-                "Outreach Approach": {"select": {"name": "A"}},
-            }
-        }
+        def text(value):
+            return {"type": "rich_text", "rich_text": [{"plain_text": value}]}
+        page = {"id": "approved", "properties": {
+            "Candidate": {"type": "title", "title": [{"plain_text": "Fighter"}]},
+            "Verified Profile URL": {"type": "url", "url": "https://instagram.com/fighter/"},
+            "Personalised DM Angle": text("Recent boxing training"),
+            "Sport": {"type": "select", "select": {"name": "Boxing"}},
+            "Priority Score": {"number": 70},
+            "AI Qualification Reason": text("Qualified"),
+            "Draft DM": text("Yo..."), "Instagram Handle": text("fighter"),
+            "Outreach Approach": {"type": "select", "select": {"name": "A"}},
+        }}
+        page = apply_properties(page, receipt_properties(new_receipt(page, "2026-10-08T12:00:00Z")))
         self.assertFalse(_ready_row_needs_repair(page))
-
 
     def test_daily_counter_uses_london_calendar_day(self):
         start, end = _today_utc_bounds(
