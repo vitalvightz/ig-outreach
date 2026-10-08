@@ -33,6 +33,10 @@ class OutreachLogicTests(unittest.TestCase):
             fight_date_issue(athlete, draft="M1: saw your fight on 24 October 2026. M2: Fight night.", approach="B", today=date(2026, 10, 8))
         )
 
+    def test_fight_camp_with_yearless_event_date_needs_research(self):
+        athlete = {"personalised_dm_angle": "currently in camp for 7th November Doncaster Dome"}
+        self.assertEqual(fight_date_issue(athlete, draft="M1: saw you're in camp", approach="B", today=date(2026, 10, 8))[0], "Needs Research")
+
     def test_past_result_not_rejected_as_upcoming(self):
         athlete = {"personalised_dm_angle": "WINNER BRENDAN ATHERTON 12 September 2026"}
         self.assertIsNone(fight_date_issue(athlete, draft="Saw you won the Blockone Belter.", approach="A", today=date(2026, 10, 8)))
