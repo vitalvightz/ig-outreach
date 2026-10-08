@@ -3,17 +3,20 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import requests
 from openai import OpenAI
 
+from daily_counter import NotionSession, apply_properties, ensure_schema, sync_counter
+from qualification import (
+    RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
+    reconcile, receipt_properties, research_fingerprint, today_bounds,
+)
+
 from core import (
     Settings,
-    _plain_text,
-    _select_value,
     fight_date_issue,
     _notion_headers,
     _rich_text_value,
@@ -34,7 +37,6 @@ DAILY_COUNTER_PAGE_ID = os.getenv(
     "NOTION_DAILY_COUNTER_PAGE_ID",
     "3f3d6e71-8d27-8165-b1a2-e5d137d1c172",
 )
-LONDON_TZ = ZoneInfo("Europe/London")
 
 
 def _normalize_notion_id(value: str | None) -> str:
@@ -130,118 +132,17 @@ def _query_stage_filter(
 
 
 def _today_utc_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
-    """Return the current Europe/London calendar day as UTC bounds."""
-    current = now or datetime.now(timezone.utc)
-    if current.tzinfo is None:
-        current = current.replace(tzinfo=timezone.utc)
-    local = current.astimezone(LONDON_TZ)
-    start_local = local.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_local = start_local + timedelta(days=1)
-    return start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+    return today_bounds(now or datetime.now(timezone.utc))
 
 
-def _candidate_counts_toward_daily_target(candidate: dict[str, str]) -> bool:
-    return all(
-        candidate.get(field, "").strip()
-        for field in ("candidate", "verified_profile_url", "personalised_dm_angle")
-    )
+def _update_daily_progress_counter(session, settings, *, now=None, stage_property_id=None):
+    stage_property_id = stage_property_id or _resolve_stage_property_id(session, settings)
+    return sync_counter(session, settings, stage_property_id, DAILY_COUNTER_PAGE_ID, now=now)
 
 
-def _count_today_completed(
-    session: requests.Session,
-    settings: Settings,
-    *,
-    now: datetime | None = None,
-) -> int:
-    """Count complete human-entered prospects created on the current UK day."""
-    start, end = _today_utc_bounds(now)
-    start_cursor: str | None = None
-    count = 0
-    url = f"https://api.notion.com/v1/data_sources/{settings.notion_data_source_id}/query"
-
-    while True:
-        payload: dict[str, Any] = {
-            "filter": {
-                "and": [
-                    {
-                        "timestamp": "created_time",
-                        "created_time": {"on_or_after": start.isoformat()},
-                    },
-                    {
-                        "timestamp": "created_time",
-                        "created_time": {"before": end.isoformat()},
-                    },
-                ]
-            },
-            "page_size": 100,
-        }
-        if start_cursor:
-            payload["start_cursor"] = start_cursor
-
-        response = session.post(
-            url,
-            headers=_notion_headers(settings.notion_api_key),
-            json=payload,
-            timeout=30,
-        )
-        if not response.ok:
-            raise RuntimeError(
-                f"Notion daily-counter query failed ({response.status_code}): {response.text}"
-            )
-
-        body = response.json()
-        count += sum(
-            _candidate_counts_toward_daily_target(candidate_from_page(page))
-            for page in body.get("results", [])
-        )
-
-        if not body.get("has_more"):
-            return count
-        start_cursor = body.get("next_cursor")
-        if not start_cursor:
-            return count
-
-
-def _update_daily_progress_counter(
-    session: requests.Session,
-    settings: Settings,
-    *,
-    now: datetime | None = None,
-) -> int:
-    count = _count_today_completed(session, settings, now=now)
-    title = f"{count} / {DAILY_TARGET} complete"
-    _patch_page(
-        session,
-        settings,
-        DAILY_COUNTER_PAGE_ID,
-        {
-            "Candidate": {
-                "title": [{"type": "text", "text": {"content": title}}]
-            },
-            "Priority Score": {"number": count},
-        },
-    )
-    print(f"Daily progress: {count}/{DAILY_TARGET}")
-    return count
-
-
-def _ready_row_needs_repair(page: dict[str, Any]) -> bool:
-    """Ready-to-send rows must have the full AI-owned output set."""
-    properties = page.get("properties", {})
-    score = (properties.get("Priority Score") or {}).get("number")
-    return (
-        score is None
-        or score <= 0
-        or not (properties.get("AI Qualification Reason") or {}).get("rich_text")
-        or not (properties.get("Draft DM") or {}).get("rich_text")
-        or not (properties.get("Instagram Handle") or {}).get("rich_text")
-        or not (properties.get("Outreach Approach") or {}).get("select")
-        or fight_date_issue(
-            {"personalised_dm_angle": _plain_text(properties.get("Personalised DM Angle"))},
-            draft=_plain_text(properties.get("Draft DM")),
-            approach=_select_value(properties.get("Outreach Approach")),
-        ) is not None
-    )
+def _ready_row_needs_repair(page: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """A complete-looking draft is unsafe without a current, active AI approval."""
+    return not approval_valid(page, now or datetime.now(timezone.utc), unsent=True)
 
 
 def query_ai_queue(
@@ -345,9 +246,9 @@ def _target_page_if_requested(
 
 
 def stage_from_ai(result: dict[str, Any]) -> str:
-    if not result["evidence_sufficient"]:
+    if result.get("evidence_sufficient") is not True:
         return NEEDS_RESEARCH
-    if not result["eligible"]:
+    if result.get("eligible") is not True:
         return REJECTED
     return READY_TO_SEND
 
@@ -402,6 +303,11 @@ def _mark_terminal(
     stage: str,
     reason: str,
 ) -> None:
+    if not settings.dry_run:
+        current = _retrieve_target_page(session, settings, candidate["page_id"])
+        if (research_fingerprint(candidate_from_page(current)) != research_fingerprint(candidate)
+                or _stage_value(current, stage_property_id) not in {"", AI_QUEUE, READY_TO_SEND}):
+            raise RuntimeError("Prospect changed during verification; retry from current Notion data")
     _patch_page(
         session,
         settings,
@@ -411,6 +317,8 @@ def _mark_terminal(
             "Priority Score": {"number": 0},
             "AI Qualification Reason": {"rich_text": _rich_text_value(reason)},
             "Draft DM": {"rich_text": []},
+            RECEIPT: {"rich_text": []},
+            QUALIFIED_AT: {"date": None},
         },
     )
 
@@ -439,21 +347,57 @@ def update_ai_result(
             "select": {"name": result["outreach_approach"]}
         }
 
+    # Re-read after the AI call: do not overwrite a human stage/evidence edit.
+    current = _retrieve_target_page(session, settings, candidate["page_id"])
+    if not settings.dry_run and (
+        research_fingerprint(candidate_from_page(current)) != research_fingerprint(candidate)
+        or _stage_value(current, stage_property_id) not in {"", AI_QUEUE, READY_TO_SEND}
+    ):
+        raise RuntimeError("Prospect changed during AI qualification; retry from current Notion data")
+    if stage == READY_TO_SEND:
+        if settings.dry_run:
+            current = apply_properties(current, {
+                "Instagram Handle": {"rich_text": _rich_text_value(candidate["instagram_handle"])},
+                "Sport": {"select": {"name": candidate["sport"]}},
+            })
+        proposed = apply_properties(current, properties)
+        previous = receipt(current)
+        at = datetime.now(timezone.utc).isoformat()
+        if (previous and previous["active"] and _stage_value(current, stage_property_id) == READY_TO_SEND
+                and previous.get("fingerprint") == fingerprint(proposed)):
+            at = previous.get("at")
+        legacy = bool(previous and previous["legacy"] and at is None)
+        properties.update(receipt_properties(new_receipt(proposed, at, legacy=legacy)))
+    else:
+        properties.update({RECEIPT: {"rich_text": []}, QUALIFIED_AT: {"date": None}})
     _patch_page(session, settings, candidate["page_id"], properties)
     return stage
 
 
 def run_outreach() -> int:
-    settings = Settings.from_env()
-    session = requests.Session()
-    client = OpenAI(api_key=settings.openai_api_key)
+    settings = Settings.from_env(require_openai=os.getenv("COUNTER_ONLY", "").lower() != "true")
+    session = NotionSession()
 
     stage_property_id = _resolve_stage_property_id(session, settings)
+    missing_schema = ensure_schema(session, settings)
+    if missing_schema and not settings.dry_run:
+        raise RuntimeError("Run migrate_counter.py --apply-schema before running this worker")
+    if missing_schema and settings.dry_run:
+        print("Dry run: schema migration pending; qualification preview only")
 
-    try:
-        _update_daily_progress_counter(session, settings)
-    except Exception as exc:
-        print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
+    counter_only = os.getenv("COUNTER_ONLY", "").lower() == "true"
+    external_counter = (
+        os.getenv("OUTREACH_EXTERNAL_COUNTER", "").lower() == "true"
+        or bool(missing_schema and settings.dry_run)
+    )
+    if counter_only:
+        try:
+            _update_daily_progress_counter(session, settings, stage_property_id=stage_property_id)
+            return 0
+        except Exception as exc:
+            print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
+            return 1
+    client = OpenAI(api_key=settings.openai_api_key)
     targeted_pages = _target_page_if_requested(session, settings, stage_property_id)
     if targeted_pages is None:
         pages = query_ai_queue(session, settings, stage_property_id)
@@ -463,12 +407,28 @@ def run_outreach() -> int:
         print(f"Targeted prospects pulled from Notion: {len(pages)}")
 
     processed = 0
+    counter_failed = False
     skipped = 0
     failed = 0
 
     for page in pages:
         candidate = candidate_from_page(page)
         label = candidate["candidate"] or candidate["instagram_handle"] or candidate["page_id"]
+
+        if _stage_value(page, stage_property_id) == READY_TO_SEND and _ready_row_needs_repair(page):
+            try:
+                current = _retrieve_target_page(session, settings, candidate["page_id"])
+                changes = reconcile(current, stage_property_id, datetime.now(timezone.utc))
+                if _stage_value(current, stage_property_id) == READY_TO_SEND and changes:
+                    _patch_page(session, settings, candidate["page_id"], changes)
+                    processed += 1
+                    print(f"Needs Research: {label} — approval requires an explicit AI Queue recheck")
+                else:
+                    skipped += 1
+            except Exception as exc:
+                failed += 1
+                print(f"ERROR: {label}: {exc}", file=sys.stderr)
+            continue
 
         if _is_empty_row(candidate):
             skipped += 1
@@ -603,15 +563,17 @@ def run_outreach() -> int:
             failed += 1
             print(f"ERROR: {label}: {exc}", file=sys.stderr)
 
-    try:
-        _update_daily_progress_counter(session, settings)
-    except Exception as exc:
-        print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
+    if not external_counter:
+        try:
+            _update_daily_progress_counter(session, settings, stage_property_id=stage_property_id)
+        except Exception as exc:
+            counter_failed = True
+            print(f"WARNING: daily progress counter update failed: {exc}", file=sys.stderr)
 
     print(
         f"Outreach run complete. Processed={processed}, Skipped={skipped}, Failed={failed}"
     )
-    return 1 if failed else 0
+    return 1 if failed or counter_failed else 0
 
 
 if __name__ == "__main__":

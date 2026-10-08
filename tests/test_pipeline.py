@@ -2,11 +2,12 @@ import unittest
 from datetime import datetime, timezone
 
 from core import instagram_handle_from_profile_url, verified_profile_reason
+from daily_counter import apply_properties
+from qualification import new_receipt, receipt_properties
 from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
     REJECTED,
-    _candidate_counts_toward_daily_target,
     _entry_complete,
     _is_empty_row,
     _ready_row_needs_repair,
@@ -108,37 +109,20 @@ class PipelineStageTests(unittest.TestCase):
         self.assertTrue(_ready_row_needs_repair(page))
 
     def test_complete_ready_row_is_not_reprocessed(self):
-        page = {
-            "properties": {
-                "Priority Score": {"number": 70},
-                "AI Qualification Reason": {"rich_text": [{"plain_text": "Qualified"}]},
-                "Draft DM": {"rich_text": [{"plain_text": "Yo..."}]},
-                "Instagram Handle": {"rich_text": [{"plain_text": "fighter"}]},
-                "Outreach Approach": {"select": {"name": "A"}},
-            }
-        }
+        def text(value):
+            return {"type": "rich_text", "rich_text": [{"plain_text": value}]}
+        page = {"id": "approved", "properties": {
+            "Candidate": {"type": "title", "title": [{"plain_text": "Fighter"}]},
+            "Verified Profile URL": {"type": "url", "url": "https://instagram.com/fighter/"},
+            "Personalised DM Angle": text("Recent boxing training"),
+            "Sport": {"type": "select", "select": {"name": "Boxing"}},
+            "Priority Score": {"number": 70},
+            "AI Qualification Reason": text("Qualified"),
+            "Draft DM": text("Yo..."), "Instagram Handle": text("fighter"),
+            "Outreach Approach": {"type": "select", "select": {"name": "A"}},
+        }}
+        page = apply_properties(page, receipt_properties(new_receipt(page, "2026-10-08T12:00:00Z")))
         self.assertFalse(_ready_row_needs_repair(page))
-
-
-    def test_daily_target_requires_all_three_human_fields(self):
-        self.assertTrue(
-            _candidate_counts_toward_daily_target(
-                {
-                    "candidate": "Fighter",
-                    "verified_profile_url": "https://www.instagram.com/fighter/",
-                    "personalised_dm_angle": "Recent public boxing detail.",
-                }
-            )
-        )
-        self.assertFalse(
-            _candidate_counts_toward_daily_target(
-                {
-                    "candidate": "Fighter",
-                    "verified_profile_url": "",
-                    "personalised_dm_angle": "Recent public boxing detail.",
-                }
-            )
-        )
 
     def test_daily_counter_uses_london_calendar_day(self):
         start, end = _today_utc_bounds(
@@ -159,6 +143,11 @@ class InstagramVerificationTests(unittest.TestCase):
             ),
             "poonia_boxer_",
         )
+
+    def test_rejects_invalid_dot_handles(self):
+        for handle in (".", ".fighter", "fighter.", "fight..er"):
+            with self.subTest(handle=handle):
+                self.assertIsNone(instagram_handle_from_profile_url(f"https://instagram.com/{handle}/"))
 
     def test_rejects_typed_handle_without_profile_url(self):
         self.assertIsNone(instagram_handle_from_profile_url("poonia_boxer_"))

@@ -1,0 +1,17 @@
+[Unit]
+Description=UNLXCK daily qualified outreach counter
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=unlxck
+WorkingDirectory=/opt/ig-outreach
+EnvironmentFile=/etc/unlxck/outreach.env
+Environment=COUNTER_ONLY=true
+Environment=OUTREACH_COUNTER_STATE=/var/lib/unlxck-counter/daily-counter.sqlite3
+StateDirectory=unlxck-counter
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/opt/ig-outreach/.venv/bin/python /opt/ig-outreach/pipeline.py
+TimeoutStartSec=10min
