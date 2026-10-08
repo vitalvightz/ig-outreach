@@ -148,6 +148,7 @@ Return only the requested structured output.
 
 _MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name}
 _MONTHS.update({name.lower(): i for i, name in enumerate(calendar.month_abbr) if name})
+_MONTHS["sept"] = 9
 _MONTH_PATTERN = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _FIGHT_DATE_RE = re.compile(
     rf"\b(?:(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<m1>{_MONTH_PATTERN})\.?(?:,?\s+(?P<y1>20\d{{2}}))?"
@@ -213,11 +214,12 @@ def fight_date_issue(
         return "Rejected", f"Rejected: draft describes a past fight as upcoming (today: {today:%d %B %Y})."
     if upcoming and not future:
         return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
-    if approach == "B" and not future and not re.search(r"\b(current(?:ly)?|in)\s+(?:training\s+)?camp\b", evidence, re.I):
+    current_camp = bool(re.search(r"\b(current(?:ly)?(?:\s+\w+){0,3}\s+camp|in\s+camp|camp\b.{0,40}\bcurrent)\b", evidence, re.I))
+    if (approach == "B" or claims_future) and not future and not current_camp:
         return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
     if draft and _RELATIVE_DM_RE.search(draft):
         return "Needs Research", "Needs research: draft uses relative fight timing. Use a verified exact calendar date."
-    if draft and approach == "B" and future and not any(d in _fight_dates(draft) for d in future):
+    if draft and (approach == "B" or claims_future) and future and not any(d in _fight_dates(draft) for d in future):
         return "Needs Research", "Needs research: upcoming fight DM must state the verified exact day, month and year."
     return None
 
