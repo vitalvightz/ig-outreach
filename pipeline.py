@@ -206,7 +206,7 @@ def _update_daily_progress_counter(
     now: datetime | None = None,
 ) -> int:
     count = _count_today_completed(session, settings, now=now)
-    title = f"TODAY COMPLETED — {count} / {DAILY_TARGET}"
+    title = f"{count} / {DAILY_TARGET} complete"
     _patch_page(
         session,
         settings,
