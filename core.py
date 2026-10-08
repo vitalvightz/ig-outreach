@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import calendar
 import json
 import os
 import re
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -38,11 +41,12 @@ IMPORTANT: PROSPECT DATA IS RESEARCH NOTES, NOT MESSAGE COPY.
 - Extract the single strongest natural hook from those notes. Do not copy the notes verbatim.
 - Use only facts that are actually supported by the notes. Do not embellish them.
 - Do not cram every recorded fact into the opener. One clean specific detail is normally best.
-- Exact dates such as "18 Aug", "August 18", or "18/08" are research metadata, not DM language.
-  Do not include them in a cold DM unless the date itself is genuinely necessary to understand
-  an upcoming fight and it would sound natural in conversation.
-- Do not convert exact dates into "last week", "recently", or another relative date unless the
-  supplied notes already support that wording.
+- For an upcoming fight, require a verified calendar date with day, month and year. Compare it
+  against today's date. Never treat a past event as an upcoming fight.
+- Include the exact verified date in any DM about an upcoming fight, e.g. "24 October 2026".
+  Never say "in two weeks", "a few days", "tomorrow", or other relative timings.
+- If the only fight evidence is an unanchored relative date or ambiguous year, evidence is
+  insufficient. Do not draft an upcoming-fight DM.
 - Prefer the real-world fact over talking about the social post that revealed it. For example,
   write "saw you picked up your second European title" rather than "saw your post about winning".
 
@@ -75,7 +79,7 @@ PRIORITY SCORE (0-100)
 - "Follower" means an existing UNLXCK follower/warm audience signal, not a high follower count.
 
 OUTREACH APPROACH
-- B = Camp Priority only when supplied evidence clearly shows a current camp or upcoming fight.
+- B = Camp Priority only when supplied evidence clearly shows a current camp or a verified future fight date.
 - A = Private Beta for other qualified prospects.
 - Do not choose B merely because the athlete competes regularly or recently fought.
 
@@ -111,7 +115,7 @@ BAD:
 "Saw your 18 Aug post after winning your second European title and that you're back training at Example Boxing Club. We're selecting a few fighters for private Unlxck access before launch. Want the details?"
 GOOD:
 "Yo John, saw you picked up your second European title. We're giving a few fighters early access to Unlxck before launch. Want me to send you a bit more on it?"
-Why the good version works: it uses one real detail, drops research metadata and exact dates,
+Why the good version works: it uses one real detail, drops irrelevant research metadata,
 and sounds like a normal DM rather than a summary of the intern's notes.
 
 APPROACH B: CAMP PRIORITY
@@ -120,7 +124,7 @@ Return a three-message sequence labelled M1, M2, M3 so the human knows to send t
   "Yo bro, saw [one natural verified camp detail]. Thought this could be useful for this camp."
 - If only an upcoming fight is supported, do not invent that they called it a camp. Use a natural
   fight-build-up version such as:
-  "Yo bro, saw you've got [verified fight detail] coming up. Thought this could be useful in the build-up."
+  "Yo bro, saw you've got [verified fight detail] on [exact day month year]. Thought this could be useful in the build-up."
 - Use a clear first name instead of "bro" when available and natural.
 - M2: "Unlxck helps make sure your sparring, conditioning, S&C and recovery aren't pulling in different directions, so the right things get priority as fight night gets closer."
 - M3: "Mind if I send you a bit more on it?"
@@ -132,7 +136,7 @@ Ask yourself:
 2. Did I convert research notes into conversational language rather than copy them?
 3. Is every factual implication supported by the supplied notes?
 4. Did I use only one strong personalisation detail unless two facts are genuinely inseparable?
-5. Did I remove research metadata and unnecessary exact dates?
+5. Did I include the exact day, month and year for an upcoming fight and avoid relative timings?
 6. Did I avoid em dashes, en dashes, semicolons, emojis, exclamation marks and corporate language?
 7. Did I avoid inventing camp status, a pain point, product need, or name?
 If any answer is no, rewrite the draft before returning it.
@@ -140,6 +144,83 @@ If any answer is no, rewrite the draft before returning it.
 If evidence is insufficient, do not draft anything.
 Return only the requested structured output.
 """.strip()
+
+
+_MONTHS = {name.lower(): i for i, name in enumerate(calendar.month_name) if name}
+_MONTHS.update({name.lower(): i for i, name in enumerate(calendar.month_abbr) if name})
+_MONTH_PATTERN = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_FIGHT_DATE_RE = re.compile(
+    rf"\b(?:(?P<d1>\d{{1,2}})(?:st|nd|rd|th)?\s+(?P<m1>{_MONTH_PATTERN})\.?(?:,?\s+(?P<y1>20\d{{2}}))?"
+    rf"|(?P<m2>{_MONTH_PATTERN})\.?\s+(?P<d2>\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<y2>20\d{{2}}))?"
+    rf"|(?P<d3>\d{{1,2}})/(?P<m3>\d{{1,2}})/(?P<y3>20\d{{2}})"
+    rf"|(?P<y4>20\d{{2}})-(?P<m4>\d{{1,2}})-(?P<d4>\d{{1,2}}))\b",
+    re.IGNORECASE,
+)
+_FIGHT_CONTEXT_RE = re.compile(
+    r"\b(fight|bout|vs|versus|debut|championships?|camp|poster|card|locked in|worlds)\b",
+    re.IGNORECASE,
+)
+_UPCOMING_RE = re.compile(
+    r"\b(upcoming|coming up|locked in|tomorrow|next week|fight week|"
+    r"\d+\s+weeks?\s+(?:out|to go)|(?:a |one |two |three |few )weeks?\s+(?:out|to go))\b",
+    re.IGNORECASE,
+)
+_RELATIVE_DM_RE = re.compile(
+    r"\b(tomorrow|next week|this weekend|in (?:a |the )?few days|"
+    r"in (?:\d+|one|two|three|four)\s+(?:days?|weeks?)|"
+    r"(?:one|two|three|four|\d+)\s+weeks?\s+(?:out|to go))\b",
+    re.IGNORECASE,
+)
+
+
+def _fight_dates(text: str) -> list[date]:
+    dates = []
+    for match in _FIGHT_DATE_RE.finditer(text):
+        g = match.groupdict()
+        year = g["y1"] or g["y2"] or g["y3"] or g["y4"]
+        if not year:
+            continue  # An unspecified year cannot be validated as future.
+        day = g["d1"] or g["d2"] or g["d3"] or g["d4"]
+        month = g["m1"] or g["m2"] or g["m3"] or g["m4"]
+        try:
+            dates.append(date(int(year), _MONTHS[month.lower()] if month.lower() in _MONTHS else int(month), int(day)))
+        except ValueError:
+            continue
+    return dates
+
+
+def fight_date_issue(
+    candidate: dict[str, str],
+    draft: str = "",
+    approach: str = "",
+    today: date | None = None,
+) -> tuple[str, str] | None:
+    """Fail closed on expired or ambiguous fight claims, without rejecting past results."""
+    today = today or datetime.now(ZoneInfo("Europe/London")).date()
+    evidence = candidate.get("personalised_dm_angle", "")
+    future, past, upcoming = [], [], False
+    for part in re.split(r"\s*\+\s*|[;\n]", evidence):
+        if not _FIGHT_CONTEXT_RE.search(part):
+            continue
+        is_upcoming = bool(_UPCOMING_RE.search(part))
+        upcoming |= is_upcoming
+        for fight_date in _fight_dates(part):
+            (future if fight_date >= today else past).append(fight_date)
+            if is_upcoming and fight_date < today:
+                return "Rejected", f"Rejected: purported upcoming fight was on {fight_date:%d %B %Y}, before today ({today:%d %B %Y})."
+    claims_future = bool(re.search(r"\b(coming up|upcoming|locked in|fight night gets closer)\b", draft, re.I))
+    if past and claims_future and not future:
+        return "Rejected", f"Rejected: draft describes a past fight as upcoming (today: {today:%d %B %Y})."
+    if upcoming and not future:
+        return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
+    if approach == "B" and not future and not re.search(r"\b(current(?:ly)?|in)\s+(?:training\s+)?camp\b", evidence, re.I):
+        return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
+    if draft and _RELATIVE_DM_RE.search(draft):
+        return "Needs Research", "Needs research: draft uses relative fight timing. Use a verified exact calendar date."
+    if draft and approach == "B" and future and not any(d in _fight_dates(draft) for d in future):
+        return "Needs Research", "Needs research: upcoming fight DM must state the verified exact day, month and year."
+    return None
+
 
 WARM_SOURCE_BONUS = {
     "Existing follower": 10,
@@ -358,7 +439,7 @@ def qualify_and_draft(client: OpenAI, settings: Settings, candidate: dict[str, s
     safe_candidate = {key: value for key, value in candidate.items() if key != "page_id"}
     response = client.responses.create(
         model=settings.openai_model,
-        instructions=AI_INSTRUCTIONS,
+        instructions=f"Today's date in Europe/London: {datetime.now(ZoneInfo('Europe/London')):%d %B %Y}.\n{AI_INSTRUCTIONS}",
         input=json.dumps(safe_candidate, ensure_ascii=False),
         text={
             "format": {
