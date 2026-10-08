@@ -199,12 +199,13 @@ def fight_date_issue(
     """Fail closed on expired or ambiguous fight claims, without rejecting past results."""
     today = today or datetime.now(ZoneInfo("Europe/London")).date()
     evidence = candidate.get("personalised_dm_angle", "")
-    future, past, upcoming = [], [], False
+    future, past, upcoming, partial_date = [], [], False, False
     for part in re.split(r"\s*\+\s*|[;\n]", evidence):
         if not _FIGHT_CONTEXT_RE.search(part):
             continue
         is_upcoming = bool(_UPCOMING_RE.search(part))
         upcoming |= is_upcoming
+        partial_date |= bool(_FIGHT_DATE_RE.search(part)) and not bool(_fight_dates(part))
         for fight_date in _fight_dates(part):
             (future if fight_date >= today else past).append(fight_date)
             if is_upcoming and fight_date < today:
@@ -215,6 +216,8 @@ def fight_date_issue(
     if upcoming and not future:
         return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
     current_camp = bool(re.search(r"\b(current(?:ly)?(?:\s+\w+){0,3}\s+camp|in\s+camp|camp\b.{0,40}\bcurrent)\b", evidence, re.I))
+    if approach == "B" and partial_date and not future:
+        return "Needs Research", "Needs research: confirm the event year and full fight date before sending."
     if (approach == "B" or claims_future) and not future and not current_camp:
         return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
     if draft and _RELATIVE_DM_RE.search(draft):
