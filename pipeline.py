@@ -13,6 +13,7 @@ from daily_counter import NotionSession, apply_properties, ensure_schema, sync_c
 from qualification import (
     RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
     reconcile, receipt_properties, research_fingerprint, today_bounds,
+    grandfathered_without_receipt,
 )
 
 from core import (
@@ -142,6 +143,8 @@ def _update_daily_progress_counter(session, settings, *, now=None, stage_propert
 
 def _ready_row_needs_repair(page: dict[str, Any], *, now: datetime | None = None) -> bool:
     """A complete-looking draft is unsafe without a current, active AI approval."""
+    if grandfathered_without_receipt(page):
+        return False
     return not approval_valid(page, now or datetime.now(timezone.utc), unsent=True)
 
 
