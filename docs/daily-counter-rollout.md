@@ -63,6 +63,36 @@ prevents a new duplicate earning today's credit. If the owner loses qualificatio
 or is archived/deleted, another currently qualified copy may own credit. This is
 one count per profile, across candidate names. No prospect rows are deleted/merged.
 
+## Forward-only rollout (no historical audit)
+
+For an explicit new-start policy, set a permanent UTC
+`OUTREACH_COUNTER_CUTOVER_AT=2026-10-08T16:20:00+00:00` value
+(the timestamp is an **example only**; capture the actual deployment instant).
+Create it once and reuse it across every weekday AI worker, counter-only
+scheduler, redeployment and crash recovery. Do not update it each day.
+
+With this setting, pre-cutover prospects **without** an AI receipt are
+grandfathered for workflow visibility: the new reconciler and worker
+will not move their existing `Ready to Send` stages backwards merely
+because the new receipt property did not previously exist. They earn
+**zero** new daily credit unless they undergo a fresh AI qualification.
+New pages created after the cutover without a valid receipt are still
+sent to `Needs Research` if manually put in `Ready to Send`.
+Old pages explicitly moved to `AI Queue` can receive a fresh AI
+approval without backdating credit.
+
+Since no old approval audit is wanted, do **not** run
+`migrate_counter.py --manifest ... --apply`; only add the two required
+schema fields. Activation starts today's qualified counter at zero.
+The old count reflected entered fields and is not comparable.
+All stage data and previous DMs remain intact.
+
+To guard against accidental omitted configuration, validate
+`OUTREACH_COUNTER_CUTOVER_AT` is nonempty and timezone-aware before
+enabling the production worker. Keep this value in a root-independent
+private env file alongside the persistent SQLite state, not in Git.
+Run the counter every two minutes on weekends as well as weekdays.
+
 ## Additive schema and historical backfill
 
 Two new system-owned fields are required:
