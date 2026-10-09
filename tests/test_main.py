@@ -53,6 +53,77 @@ class OutreachLogicTests(unittest.TestCase):
         athlete = {"personalised_dm_angle": "currently in camp at Team GB Sheffield October 2026"}
         self.assertIsNone(fight_date_issue(athlete, draft="M1: saw you're at Team GB camp.", approach="B", today=date(2026, 10, 8)))
 
+    def test_post_date_not_confused_with_callum_future_fight(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming event posted at 17 august 2026, Blackpool's Callum Espin-Fahy joins "
+                   "Fight Club on Saturday 10 October 2026"}
+        self.assertIsNone(fight_date_issue(athlete, today=date(2026, 10, 9)))
+        self.assertIsNone(fight_date_issue(
+            athlete, draft="M1: saw your fight on 10 October 2026. M2: sparring.", approach="B",
+            today=date(2026, 10, 9)))
+
+    def test_unverified_elias_event_date_is_not_false_expired_fight(self):
+        athlete = {"personalised_dm_angle":
+                   "the upcoming event is posted at 1 October 2026, is BANTAMWEIGHT BOUT "
+                   "on 24 October 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 9))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("participation", issue[1].lower())
+        self.assertNotIn("supply the verified full", issue[1])
+
+    def test_harrison_future_event_missing_participation_not_date(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming event posted at 3 September 2026, is doncasters top tier "
+                   "on saturday 7 November 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 9))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("competing", issue[1])
+        self.assertNotIn("full future fight date", issue[1])
+
+    def test_maxime_and_oussama_dated_event_without_boxer_link(self):
+        for note in (
+            "upcoming event posted at 8 October 2026 is, IGNITE the electric ballroom,camden on 15 November 2026",
+            "upcoming event posted at 25 September 2026 is, deutsche meisterschaft im lightweight on 14 November 2026",
+        ):
+            with self.subTest(note=note):
+                issue = fight_date_issue({"personalised_dm_angle": note}, today=date(2026, 10, 9))
+                self.assertEqual(issue[0], "Needs Research")
+                self.assertIn("participation", issue[1])
+
+    def test_explicit_athlete_confirmed_for_named_event_allows_fight_date(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming event posted 3 September 2026: Harrison Barker confirmed for "
+                   "Doncaster Top Tier on Saturday 7 November 2026"}
+        self.assertIsNone(fight_date_issue(
+            athlete, draft="M1: saw you're fighting on 7 November 2026.", approach="B",
+            today=date(2026, 10, 9)))
+
+    def test_past_publication_does_not_reject_even_when_only_date(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming boxing event announced on 20 September 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 9))
+        self.assertEqual(issue[0], "Needs Research")
+
+    def test_expired_fight_still_rejected_when_publication_date_is_future(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming fight post published on 8 October 2026 says bout on 26 September 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 9))
+        self.assertEqual(issue[0], "Rejected")
+        self.assertIn("26 September 2026", issue[1])
+
+    def test_full_yearless_event_still_requires_confirmation(self):
+        athlete = {"personalised_dm_angle":
+                   "upcoming event posted 1 October 2026: Fighter confirmed for Doncaster 7 November"}
+        issue = fight_date_issue(athlete, draft="M1: fight coming up", approach="B", today=date(2026, 10, 9))
+        self.assertEqual(issue[0], "Needs Research")
+
+    def test_past_fight_can_be_private_beta_personalisation(self):
+        athlete = {"personalised_dm_angle":
+                   "fought on 26 September 2026, made his UK debut at Home Stretch"}
+        self.assertIsNone(fight_date_issue(
+            athlete, draft="Yo Mikael, saw you made your UK debut at Home Stretch.",
+            approach="A", today=date(2026, 10, 9)))
+
     def test_preflight_requires_public_personalisation(self):
         candidate = {
             "instagram_handle": "@fighter",
