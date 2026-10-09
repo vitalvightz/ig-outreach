@@ -41,8 +41,19 @@ IMPORTANT: PROSPECT DATA IS RESEARCH NOTES, NOT MESSAGE COPY.
 - Extract the single strongest natural hook from those notes. Do not copy the notes verbatim.
 - Use only facts that are actually supported by the notes. Do not embellish them.
 - Do not cram every recorded fact into the opener. One clean specific detail is normally best.
-- For an upcoming fight, require a verified calendar date with day, month and year. Compare it
-  against today's date. Never treat a past event as an upcoming fight.
+- Separate the publication date of a social post (e.g. "posted 1 October 2026") from
+  the actual bout/event date ("fight on 24 October 2026"). Compare ONLY the event
+  date against today when evaluating an upcoming fight. A past publication date is
+  not proof of an expired fight.
+- For an upcoming fight, require a verified calendar date with day, month and year.
+  Never treat an expired fight as upcoming.
+- The date and venue of an event alone do NOT establish that this particular athlete
+  is competing there. Require evidence linking the athlete to the card or fight,
+  such as a named fight poster, athlete confirmation or an opponent announcement.
+  If that link is missing, mark Needs Research and say to confirm PARTICIPATION,
+  not to supply a date already given.
+- A recent completed fight can be used as a past result for Private Beta outreach.
+  Do not reject the athlete merely because a clearly historical bout has ended.
 - Include the exact verified date in any DM about an upcoming fight, e.g. "24 October 2026".
   Never say "in two weeks", "a few days", "tomorrow", or other relative timings.
 - If the only fight evidence is an unanchored relative date or ambiguous year, evidence is
@@ -159,12 +170,26 @@ _FIGHT_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _FIGHT_CONTEXT_RE = re.compile(
-    r"\b(fight|bout|vs|versus|debut|championships?|camp|poster|card|locked in|worlds)\b",
+    r"\b(fight|bout|vs|versus|debut|championships?|camp|poster|card|locked in|worlds|events?|shows?|tournaments?)\b",
     re.IGNORECASE,
 )
 _UPCOMING_RE = re.compile(
     r"\b(upcoming|coming up|locked in|tomorrow|next week|fight week|"
     r"\d+\s+weeks?\s+(?:out|to go)|(?:a |one |two |three |few )weeks?\s+(?:out|to go))\b",
+    re.IGNORECASE,
+)
+_POSTED_DATE_PREFIX_RE = re.compile(
+    r"\b(?:post(?:ed)?|published|uploaded|announced|shared)\s+(?:(?:on|at|dated)\s*)?$",
+    re.IGNORECASE,
+)
+_GENERIC_UPCOMING_EVENT_RE = re.compile(
+    r"\b(?:upcoming|next|future)\s+(?:(?:boxing|fight)\s+)?(?:event|show|tournament)\b",
+    re.IGNORECASE,
+)
+_ATHLETE_EVENT_LINK_RE = re.compile(
+    r"\b(?:fighting|competing|boxing\s+(?:at|on)|booked|confirmed\s+(?:to|for)|"
+    r"scheduled\s+(?:to|for)|listed|named\s+(?:on|for)|appearing|participating|"
+    r"joins?|features?|featuring|faces?|facing|takes?\s+on|vs\.?|versus|on\s+(?:the\s+)?card)\b",
     re.IGNORECASE,
 )
 _RELATIVE_DM_RE = re.compile(
@@ -175,20 +200,30 @@ _RELATIVE_DM_RE = re.compile(
 )
 
 
-def _fight_dates(text: str) -> list[date]:
-    dates = []
+def _dated_matches(text: str) -> list[tuple[date, int, int]]:
+    """Parsed full dates with offsets, excluding unparseable calendar dates."""
+    result = []
     for match in _FIGHT_DATE_RE.finditer(text):
         g = match.groupdict()
         year = g["y1"] or g["y2"] or g["y3"] or g["y4"]
         if not year:
-            continue  # An unspecified year cannot be validated as future.
+            continue
         day = g["d1"] or g["d2"] or g["d3"] or g["d4"]
         month = g["m1"] or g["m2"] or g["m3"] or g["m4"]
         try:
-            dates.append(date(int(year) + (2000 if len(year) == 2 else 0), _MONTHS[month.lower()] if month.lower() in _MONTHS else int(month), int(day)))
+            parsed = date(int(year) + (2000 if len(year) == 2 else 0),
+                          _MONTHS[month.lower()] if month.lower() in _MONTHS else int(month),
+                          int(day))
         except ValueError:
             continue
-    return dates
+        result.append((parsed, match.start(), match.end()))
+    return result
+
+
+def _fight_dates(text: str) -> list[date]:
+    """Dates of real-world events, never dates explicitly labelled as post metadata."""
+    return [value for value, start, _ in _dated_matches(text)
+            if not _POSTED_DATE_PREFIX_RE.search(text[:start])]
 
 
 def fight_date_issue(
@@ -197,31 +232,52 @@ def fight_date_issue(
     approach: str = "",
     today: date | None = None,
 ) -> tuple[str, str] | None:
-    """Fail closed on expired or ambiguous fight claims, without rejecting past results."""
+    """Distinguish publication metadata, bouts, and unverified event participation."""
     today = today or datetime.now(ZoneInfo("Europe/London")).date()
     evidence = candidate.get("personalised_dm_angle", "")
-    future, past, upcoming, partial_date = [], [], False, False
+    future, past = [], []
+    upcoming, partial_date, generic_event_without_athlete = False, False, False
     for part in re.split(r"\s*\+\s*|[;\n]", evidence):
         if not _FIGHT_CONTEXT_RE.search(part):
             continue
         is_upcoming = bool(_UPCOMING_RE.search(part))
         upcoming |= is_upcoming
+        matches = _dated_matches(part)
+        event_dates = [value for value, start, _ in matches
+                       if not _POSTED_DATE_PREFIX_RE.search(part[:start])]
+        # Publication dates, including a month/year within a full posted date,
+        # never make a future event appear expired.
         if is_upcoming:
             for month_year in _MONTH_YEAR_RE.finditer(part):
+                if any(start <= month_year.start() < end for _, start, end in matches):
+                    continue
+                if _POSTED_DATE_PREFIX_RE.search(part[:month_year.start()]):
+                    continue
                 month_number = _MONTHS[month_year["month"].lower()]
                 year_number = int(month_year["year"])
                 if (year_number, month_number) < (today.year, today.month):
-                    return "Rejected", f"Rejected: purported upcoming fight was in {month_year['month']} {year_number}, before today ({today:%d %B %Y})."
-        partial_date |= bool(_FIGHT_DATE_RE.search(part)) and not bool(_fight_dates(part))
-        for fight_date in _fight_dates(part):
-            (future if fight_date >= today else past).append(fight_date)
-            if is_upcoming and fight_date < today:
-                return "Rejected", f"Rejected: purported upcoming fight was on {fight_date:%d %B %Y}, before today ({today:%d %B %Y})."
+                    past.append(date(year_number, month_number, 1))
+        partial_date |= bool(_FIGHT_DATE_RE.search(part)) and not bool(matches)
+        for event_date in event_dates:
+            (future if event_date >= today else past).append(event_date)
+        if (is_upcoming and _GENERIC_UPCOMING_EVENT_RE.search(part)
+                and not _ATHLETE_EVENT_LINK_RE.search(part)):
+            generic_event_without_athlete = True
+
     claims_future = bool(re.search(r"\b(coming up|upcoming|locked in|fight night gets closer)\b", draft, re.I))
+    if upcoming and not future and past:
+        stale = past[0]
+        if any(stale.day == 1 and _MONTH_YEAR_RE.search(p) for p in re.split(r"\s*\+\s*|[;\n]", evidence)):
+            return "Rejected", f"Rejected: purported upcoming fight was in {stale:%B %Y}, before today ({today:%d %B %Y})."
+        return "Rejected", f"Rejected: purported upcoming fight was on {stale:%d %B %Y}, before today ({today:%d %B %Y})."
     if past and claims_future and not future:
         return "Rejected", f"Rejected: draft describes a past fight as upcoming (today: {today:%d %B %Y})."
     if upcoming and not future:
         return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
+    if generic_event_without_athlete and future:
+        return ("Needs Research", "Needs research: the event date is provided, but the notes "
+                "do not confirm this boxer is actually competing on that card. "
+                "Verify the athlete's participation before requeuing.")
     current_camp = bool(re.search(r"\b(current(?:ly)?(?:\s+\w+){0,3}\s+camp|in\s+camp|camp\b.{0,40}\bcurrent)\b", evidence, re.I))
     if approach == "B" and partial_date and not future:
         return "Needs Research", "Needs research: confirm the event year and full fight date before sending."
@@ -232,7 +288,6 @@ def fight_date_issue(
     if draft and (approach == "B" or claims_future) and future and not any(d in _fight_dates(draft) for d in future):
         return "Needs Research", "Needs research: upcoming fight DM must state the verified exact day, month and year."
     return None
-
 
 WARM_SOURCE_BONUS = {
     "Existing follower": 10,
