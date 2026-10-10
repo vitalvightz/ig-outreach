@@ -201,6 +201,13 @@ class OutreachLogicTests(unittest.TestCase):
             athlete, approach="A", draft="M1: Hey boxer, saw your recent padwork.",
             today=date(2026, 10, 10)))
 
+    def test_real_upcoming_event_header_still_requires_boxer_participation(self):
+        athlete = {"personalised_dm_angle":
+                   "Upcoming event: The Night of Champions on 24 October 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 10))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("participation", issue[1])
+
     def test_coach_only_no_upcoming_is_not_flagged_for_missing_fight_date(self):
         # Live Notion research: explicitly says no fight announced and focuses
         # on coaching; the AI should decide boxer eligibility, not ask for dates.
