@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""One-off refresh of unsent Unlxck DMs. Preserves stage and qualification time.
+"""One-off refresh of approved unsent DMs without changing employee pipeline stages.
 
-Default is preview-only. This script deliberately does NOT move rows to AI Queue,
-rerank prospects, or touch Contacted/replied records.
+Preview-only by default. Never moves rows to AI Queue or Needs Research, never
+reranks prospects, and never touches Contacted or later stages. If the AI finds
+insufficient evidence, keep the original approved draft and its receipt unchanged.
 """
 from __future__ import annotations
 
@@ -117,11 +118,14 @@ def main() -> int:
             result = qualify_and_draft(client, settings, candidate)
             draft = result["draft_dm"].strip()
 
+            # An existing Ready to Send approval is not revoked by a refresh attempt.
+            # If new qualification is uncertain, leave the original DM, stage, receipt,
+            # score and qualification date exactly as they were.
             if not (result["eligible"] and result["evidence_sufficient"]
                     and result["outreach_approach"] == old_approach
                     and new_draft_is_valid(draft)
                     and fight_date_issue(candidate, draft=draft, approach=old_approach) is None):
-                print(f"SKIP {name}: regenerated draft/approval did not pass safety checks")
+                print(f"KEPT ORIGINAL {name}: AI needs more research or new draft failed safety checks; stage remains Ready to Send")
                 skipped += 1
                 continue
 
