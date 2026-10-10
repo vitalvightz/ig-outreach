@@ -17,6 +17,7 @@ from qualification import (
 )
 
 from core import (
+    copy_ready_dm,
     Settings,
     fight_date_issue,
     _notion_headers,
@@ -342,7 +343,7 @@ def update_ai_result(
             "rich_text": _rich_text_value(result["qualification_reason"])
         },
         "Draft DM": {
-            "rich_text": _rich_text_value(result["draft_dm"] if stage == READY_TO_SEND else "")
+            "rich_text": _rich_text_value(copy_ready_dm(result["draft_dm"]) if stage == READY_TO_SEND else "")
         },
     }
     if stage == READY_TO_SEND:
