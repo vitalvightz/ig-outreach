@@ -12,7 +12,7 @@ import requests
 from core import Settings, candidate_from_page
 from daily_counter import NotionSession, apply_properties, ensure_schema, query_all, sync_counter
 from migrate_counter import backfill_properties
-from pipeline import _ready_row_needs_repair, query_ai_queue, run_outreach, update_ai_result
+from pipeline import _ready_row_needs_repair, query_ai_queue, run_outreach, update_ai_result, stage_from_ai
 from qualification import (COMPLETED_STAGES, QUALIFIED_AT, RECEIPT, count_today,
                            fingerprint, new_receipt, receipt, receipt_properties,
                            reconcile, today_bounds, grandfathered_without_receipt)
@@ -52,6 +52,12 @@ def transition(page, name, now=NOW):
 
 
 class QualificationTests(unittest.TestCase):
+    def test_ineligible_coach_only_is_rejected_not_missing_date_research(self):
+        self.assertEqual(stage_from_ai({"eligible": False, "evidence_sufficient": False}), "Rejected")
+        self.assertEqual(stage_from_ai({"eligible": True, "evidence_sufficient": False}), "Needs Research")
+        self.assertEqual(stage_from_ai({"eligible": True, "evidence_sufficient": True}), "Ready to Send")
+
+
     def test_live_worker_refuses_missing_or_invalid_cutover(self):
         with patch("pipeline.Settings.from_env", return_value=SETTINGS), patch.dict("os.environ", {"COUNTER_ONLY": "true", "OUTREACH_COUNTER_CUTOVER_AT": ""}):
             with self.assertRaisesRegex(RuntimeError, "OUTREACH_COUNTER_CUTOVER_AT"):
