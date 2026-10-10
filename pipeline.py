@@ -250,10 +250,12 @@ def _target_page_if_requested(
 
 
 def stage_from_ai(result: dict[str, Any]) -> str:
-    if result.get("evidence_sufficient") is not True:
-        return NEEDS_RESEARCH
+    # A positively identified non-athlete must not be sent back for an
+    # irrelevant fight date just because research is also incomplete.
     if result.get("eligible") is not True:
         return REJECTED
+    if result.get("evidence_sufficient") is not True:
+        return NEEDS_RESEARCH
     return READY_TO_SEND
 
 
