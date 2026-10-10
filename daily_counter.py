@@ -8,13 +8,14 @@ import os
 import sqlite3
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import requests
 
 from core import _notion_headers, candidate_from_page
 from qualification import (QUALIFIED_AT, RECEIPT, count_today,
-                           profile, receipt, reconcile, today_bounds, utc_time)
+                           profile, receipt, reconcile, stage, today_bounds, utc_time)
 
 
 class NotionSession(requests.Session):
@@ -132,8 +133,15 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
             filter_ = {"timestamp": "last_edited_time", "last_edited_time": {"on_or_after": since.isoformat()}}
         # All pages must be fetched successfully before any metadata or UI writes.
         changed_ids = set()
+        contact_transitions = set()
         for page in query_all(session, settings, filter_):
             if page["id"].replace("-", "") != counter_id.replace("-", ""):
+                previous = cached.get(page["id"])
+                # Only stamp observed future transitions; never invent old contact dates
+                # when the checkpoint is absent or a legacy row is first discovered.
+                if (previous is not None and stage(previous, stage_id) != "Contacted"
+                        and stage(page, stage_id) == "Contacted"):
+                    contact_transitions.add(page["id"])
                 cached[page["id"]] = page
                 changed_ids.add(page["id"])
 
@@ -176,6 +184,23 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
                 cached[id_] = dict(page, archived=True)
         for id_, page in list(cached.items()):
             properties = reconcile(page, stage_id, now)
+            if (id_ in contact_transitions and not page.get("archived")
+                    and not page.get("in_trash")):
+                # Re-read the live page to respect concurrent stage and date edits.
+                current = api(session, settings, "get", f"pages/{id_}")
+                if stage(current, stage_id) == "Contacted":
+                    page = current
+                    cached[id_] = page
+                    properties = reconcile(page, stage_id, now)
+                    existing = (page.get("properties", {}).get("Date Contacted") or {}).get("date")
+                    if not existing:
+                        edited = page.get("last_edited_time")
+                        if not edited:
+                            raise RuntimeError("Cannot stamp Date Contacted without an edit timestamp")
+                        # Convert the actual Notion edit timestamp, not the cron-run
+                        # timestamp, so updates spanning UK midnight use the right day.
+                        london_date = utc_time(edited).astimezone(ZoneInfo("Europe/London")).date()
+                        properties["Date Contacted"] = {"date": {"start": london_date.isoformat()}}
             if stage_id in properties and not settings.dry_run:
                 # A stale Ready snapshot must never regress a newly Contacted row.
                 page = api(session, settings, "get", f"pages/{id_}")
