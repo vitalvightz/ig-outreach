@@ -21,7 +21,7 @@ class LegacyDraftRefreshTests(unittest.TestCase):
     def test_legacy_requires_unsent_and_no_receipt(self, proof, grandfather):
         page = {"archived": False, "in_trash": False, "properties": {
             "Stage": {"type": "select", "id": "stage-id", "select": {"name": "Ready to Send"}},
-            "Draft DM": {"rich_text": [{"plain_text": "Yo Josh, saw your training. Want details?"}]},
+            "Draft DM": {"rich_text": [{"type": "text", "text": {"content": "Yo Josh, saw your training. Want details?"}, "plain_text": "Yo Josh, saw your training. Want details?"}]},
             "AI Qualification Receipt": {"rich_text": []}
         }}
         self.assertTrue(eligible(page, "stage-id"))
