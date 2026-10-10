@@ -201,6 +201,24 @@ class OutreachLogicTests(unittest.TestCase):
             athlete, approach="A", draft="M1: Hey boxer, saw your recent padwork.",
             today=date(2026, 10, 10)))
 
+    def test_coach_only_no_upcoming_is_not_flagged_for_missing_fight_date(self):
+        # Live Notion research: explicitly says no fight announced and focuses
+        # on coaching; the AI should decide boxer eligibility, not ask for dates.
+        athlete = {"personalised_dm_angle":
+                   "Recent match / activity: No pro fight poster found. HEAD Boxing Coach "
+                   "at Fighting Fit Manchester, coaching fighters. "
+                   "Upcoming one event: No upcoming fight confirmed, coaching-focused."}
+        self.assertIsNone(fight_date_issue(athlete, today=date(2026, 10, 10)))
+        self.assertIn("coach-only", AI_INSTRUCTIONS)
+
+    def test_recent_result_can_be_assessed_without_upcoming_camp_date(self):
+        athlete = {"personalised_dm_angle":
+                   "Recent match: boxed Jacob Marrer at the BOXXER Future Now card "
+                   "in Leeds on 20 December 2025. Upcoming camp: no verified date yet."}
+        self.assertIsNone(fight_date_issue(
+            athlete, approach="A", draft="M1: Hey Max, saw you boxed Jacob Marrer in Leeds.",
+            today=date(2026, 10, 10)))
+
     def test_unknown_gym_or_generic_compliment_not_marked_verified(self):
         for vague in ("training hard", "looks serious", "great profile", "generic boxing gym"):
             with self.subTest(vague=vague):
