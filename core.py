@@ -246,7 +246,11 @@ _NO_UPCOMING_FIGHT_RE = re.compile(
     re.IGNORECASE,
 )
 _UPCOMING_SECTION_HEADER_RE = re.compile(
-    r"\bupcoming\s+(?:one\s+)?(?:event|fight|bout)\s*:\s*",
+    # Treat a research heading as negative only when it explicitly leads into
+    # a denial, not when it introduces a genuine upcoming fight announcement.
+    r"\bupcoming\s+(?:one\s+)?(?:event|fight|bout)\s*:\s*"
+    r"(?=no\s+(?:verified\s+|confirmed\s+)?(?:upcoming|future|next)\s+"
+    r"(?:fight|bout|event|card)\b)",
     re.IGNORECASE,
 )
 _POSTED_DATE_PREFIX_RE = re.compile(
@@ -368,8 +372,8 @@ def fight_date_issue(
             continue
         # "No upcoming fight confirmed" and research section headings are
         # negative evidence, not claims of a scheduled bout.
-        positive_text = _UPCOMING_SECTION_HEADER_RE.sub(
-            "", _NO_UPCOMING_FIGHT_RE.sub("", part)
+        positive_text = _NO_UPCOMING_FIGHT_RE.sub(
+            "", _UPCOMING_SECTION_HEADER_RE.sub("", part)
         )
         is_upcoming = bool(_UPCOMING_RE.search(positive_text))
         upcoming |= is_upcoming
