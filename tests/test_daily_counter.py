@@ -443,6 +443,79 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.sync(NOW + timedelta(minutes=2)), 22)
         self.assertEqual(receipt(self.notion.pages["p0"])["at"], before)
 
+    def test_contacted_transition_automatically_stamps_date_without_changing_ig_url(self):
+        self.sync()
+        original_url = self.notion.pages["p0"]["properties"]["Verified Profile URL"]["url"]
+        self.notion.pages["p0"] = transition(
+            self.notion.pages["p0"], "Contacted", now=NOW + timedelta(minutes=2))
+        self.assertEqual(self.sync(NOW + timedelta(minutes=4)), 22)
+        props = self.notion.pages["p0"]["properties"]
+        self.assertEqual(props["Date Contacted"]["date"]["start"], "2026-10-08")
+        self.assertEqual(props["Verified Profile URL"]["url"], original_url)
+        date_writes = [body["properties"]["Date Contacted"] for id_, body in self.notion.writes
+                       if id_ == "p0" and "Date Contacted" in body["properties"]]
+        self.assertEqual(len(date_writes), 1)
+        self.assertEqual(self.sync(NOW + timedelta(minutes=6)), 22)
+        date_writes = [body for id_, body in self.notion.writes
+                       if id_ == "p0" and "Date Contacted" in body["properties"]]
+        self.assertEqual(len(date_writes), 1)
+
+    def test_london_midnight_uses_stage_edit_date_not_worker_run_date(self):
+        # BST 23:59 Friday is UTC 22:59; worker runs after local midnight.
+        baseline = datetime(2026, 10, 9, 22, 56, tzinfo=timezone.utc)
+        edited = datetime(2026, 10, 9, 22, 59, tzinfo=timezone.utc)
+        self.sync(baseline)
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Contacted", now=edited)
+        self.sync(datetime(2026, 10, 9, 23, 1, tzinfo=timezone.utc))
+        self.assertEqual(self.notion.pages["p0"]["properties"]["Date Contacted"]["date"]["start"], "2026-10-09")
+
+    def test_gmt_midnight_uses_uk_day_and_preserves_existing_contact_date(self):
+        start = datetime(2026, 11, 5, 23, 56, tzinfo=timezone.utc)
+        self.sync(start)
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Contacted",
+                                               now=datetime(2026, 11, 5, 23, 59, tzinfo=timezone.utc))
+        self.sync(datetime(2026, 11, 6, 0, 1, tzinfo=timezone.utc))
+        self.assertEqual(self.notion.pages["p0"]["properties"]["Date Contacted"]["date"]["start"], "2026-11-05")
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Replied",
+                                               now=datetime(2026, 11, 6, 0, 2, tzinfo=timezone.utc))
+        self.sync(datetime(2026, 11, 6, 0, 3, tzinfo=timezone.utc))
+        self.assertEqual(self.notion.pages["p0"]["properties"]["Date Contacted"]["date"]["start"], "2026-11-05")
+
+    def test_existing_contact_date_is_never_overwritten(self):
+        self.sync()
+        page = transition(self.notion.pages["p0"], "Contacted", now=NOW + timedelta(minutes=2))
+        page["properties"]["Date Contacted"] = {"type": "date", "date": {"start": "2026-10-07"}}
+        self.notion.pages["p0"] = page
+        self.sync(NOW + timedelta(minutes=4))
+        self.assertEqual(self.notion.pages["p0"]["properties"]["Date Contacted"]["date"]["start"], "2026-10-07")
+        self.assertFalse(any(id_ == "p0" and "Date Contacted" in body["properties"]
+                             for id_, body in self.notion.writes))
+
+    def test_preexisting_contacted_record_is_not_backdated_on_first_sync(self):
+        p = prospect("legacy_contact", stage="Contacted")
+        self.notion = FakeNotion([p])
+        self.sync()
+        self.assertNotIn("Date Contacted", self.notion.pages["legacy_contact"]["properties"])
+        self.assertFalse(any(id_ == "legacy_contact" and "Date Contacted" in body["properties"]
+                             for id_, body in self.notion.writes))
+
+    def test_concurrent_stage_change_skips_contact_stamp(self):
+        self.sync()
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Contacted",
+                                             now=NOW + timedelta(minutes=2))
+        prior_get = self.notion.get
+
+        def moved_to_replied_before_get(url, **kwargs):
+            if url.endswith("/pages/p0"):
+                self.notion.pages["p0"]["properties"]["stage"]["select"]["name"] = "Replied"
+            return prior_get(url, **kwargs)
+
+        self.notion.get = moved_to_replied_before_get
+        self.sync(NOW + timedelta(minutes=3))
+        self.assertNotIn("Date Contacted", self.notion.pages["p0"]["properties"])
+        self.assertFalse(any(id_ == "p0" and "Date Contacted" in body["properties"]
+                             for id_, body in self.notion.writes))
+
     def test_counter_routes_old_ready_beyond_worker_batch_limit(self):
         self.sync()
         page = self.notion.pages["p0"]
