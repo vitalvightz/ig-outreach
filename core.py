@@ -54,7 +54,9 @@ IMPORTANT: PROSPECT DATA IS RESEARCH NOTES, NOT MESSAGE COPY.
   not to supply a date already given.
 - A recent completed fight can be used as a past result for Private Beta outreach.
   Do not reject the athlete merely because a clearly historical bout has ended.
-- Include the exact verified date in any DM about an upcoming fight, e.g. "24 October 2026".
+- Verify the full upcoming fight date (including year) internally. In the DM, use
+  natural date wording: for the current month say "on the 24th"; for a different
+  month say "on November 21st". Do not mention the year in the DM.
   Never say "in two weeks", "a few days", "tomorrow", or other relative timings.
 - If the only fight evidence is an unanchored relative date or ambiguous year, evidence is
   insufficient. Do not draft an upcoming-fight DM.
@@ -161,10 +163,11 @@ M3: Want the details?
 
 APPROACH B: CAMP PRIORITY
 Use only for a verified current camp or future fight. Do not invent camp status
-from a confirmed fight date. Include the exact verified day, month and year in M1
-for any upcoming fight; the short-message target never overrides this requirement.
+from a confirmed fight date. Verify the full date, including year, internally.
+In M1 say only the ordinal for the current month, or month and ordinal otherwise.
+Never include the year in the DM.
 Example for a verified future fight:
-M1: Yo Sam, saw you've got a fight on 24 October 2026.
+M1: Yo Sam, saw you've got a fight on the 24th.
 M2: We're giving fighters early access to Unlxck to plan conditioning around sparring and fight night.
 M3: Want the details?
 
@@ -174,7 +177,8 @@ Ask yourself:
 2. Did I convert research notes into conversational language rather than copy them?
 3. Is every factual implication supported by the supplied notes?
 4. Did I use only one strong personalisation detail unless two facts are genuinely inseparable?
-5. Did I include the exact day, month and year for an upcoming fight and avoid relative timings?
+5. Did I verify the full fight date and use natural DM wording (day only this month,
+   month and day otherwise, never the year) without relative timings?
 6. Did I avoid em dashes, en dashes, semicolons, emojis, exclamation marks and corporate language?
 7. Did I avoid inventing camp status, a pain point, product need, or name?
 If any answer is no, rewrite the draft before returning it.
@@ -253,6 +257,24 @@ def _fight_dates(text: str) -> list[date]:
             if not _POSTED_DATE_PREFIX_RE.search(text[:start])]
 
 
+def _draft_mentions_verified_future_date(draft: str, future_dates: list[date], today: date) -> bool:
+    """Accept full research-verified dates expressed naturally in the outgoing DM."""
+    if any(verified in _fight_dates(draft) for verified in future_dates):
+        return True  # Backwards-compatible with already approved full-date drafts.
+    for target in future_dates:
+        day = str(target.day)
+        suffix = "th" if 11 <= target.day % 100 <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(target.day % 10, "th")
+        ordinal = rf"{day}(?:{suffix})?"
+        # Day-only wording is unambiguous exclusively within the current month/year.
+        if (target.year, target.month) == (today.year, today.month):
+            if re.search(rf"\b(?:on\s+)?the\s+{ordinal}\b", draft, re.I):
+                return True
+        month = calendar.month_name[target.month]
+        if re.search(rf"\b{month}\s+{ordinal}\b", draft, re.I):
+            return True
+    return False
+
+
 def fight_date_issue(
     candidate: dict[str, str],
     draft: str = "",
@@ -312,8 +334,8 @@ def fight_date_issue(
         return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
     if draft and _RELATIVE_DM_RE.search(draft):
         return "Needs Research", "Needs research: draft uses relative fight timing. Use a verified exact calendar date."
-    if draft and (approach == "B" or claims_future) and future and not any(d in _fight_dates(draft) for d in future):
-        return "Needs Research", "Needs research: upcoming fight DM must state the verified exact day, month and year."
+    if draft and (approach == "B" or claims_future) and future and not _draft_mentions_verified_future_date(draft, future, today):
+        return "Needs Research", "Needs research: upcoming fight DM must state the verified date naturally (day only this month, otherwise month and day)."
     return None
 
 WARM_SOURCE_BONUS = {
