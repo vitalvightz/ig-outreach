@@ -575,6 +575,18 @@ def qualify_and_draft(client: OpenAI, settings: Settings, candidate: dict[str, s
     return result
 
 
+
+def copy_ready_dm(draft: str) -> str:
+    """Convert verified M1/M2/M3 into one copy-ready Instagram message."""
+    lines = [line.strip() for line in draft.splitlines() if line.strip()]
+    if (len(lines) == 3 and lines[0].startswith("M1: ")
+            and lines[1].startswith("M2: ")
+            and lines[2] == "M3: Want the details?"):
+        return " ".join([lines[0][4:].strip(), lines[1][4:].strip(),
+                         "Want the details?"])
+    return draft.strip()
+
+
 def validate_ai_result(result: dict[str, Any]) -> None:
     score = result.get("priority_score")
     if not isinstance(score, int) or not 0 <= score <= 100:
