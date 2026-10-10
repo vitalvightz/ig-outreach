@@ -55,7 +55,7 @@ def dm_ok(dm):
     lines = [line.strip() for line in dm.splitlines() if line.strip()]
     if len(lines) != 3:
         return False
-    if not lines[0].startswith("M1: Yo ") or not lines[1].startswith("M2: "):
+    if not lines[0].startswith(("M1: Hey ", "M1: Yo ")) or not lines[1].startswith("M2: "):
         return False
     if lines[2] != "M3: Want the details?":
         return False
