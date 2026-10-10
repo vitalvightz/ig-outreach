@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import OpenAI
-from core import Settings, _plain_text, _rich_text_value, candidate_from_page, fight_date_issue, AI_INSTRUCTIONS
+from core import Settings, _plain_text, _rich_text_value, candidate_from_page, fight_date_issue, AI_INSTRUCTIONS, copy_ready_dm
 from daily_counter import NotionSession
 from pipeline import _patch_page, _query_stage_filter, _resolve_stage_property_id, _retrieve_target_page, _stage_value
 from qualification import RECEIPT, grandfathered_without_receipt, receipt
@@ -29,6 +29,9 @@ PROMPT = (
     + "Do not invent fight dates, titles, results, injuries, gyms, camps or athlete pain points. "
     + "Keep the original supported M1 hook if possible. "
     + "Use a past event as past; never claim an expired fight is upcoming.\n\n"
+    + "The provided Outreach Approach is fixed. A means Private Beta. B means Camp Priority. "
+    + "For B, use the verified camp or upcoming fight context. For A, use the private beta pitch. "
+    + "Do not invent camp or fight context.\n\n"
     + "VOICE AND STYLE\n"
     + AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1].split("\nIf evidence is insufficient,", 1)[0]
 )
@@ -45,7 +48,7 @@ def eligible(page, stage_id):
         and not text_of(page, RECEIPT).strip()
         and grandfathered_without_receipt(page)
         and bool(text_of(page, "Draft DM").strip())
-        and "M3: Want the details?" not in text_of(page, "Draft DM")
+        and not text_of(page, "Draft DM").strip().endswith("Want the details?")
     )
 
 def dm_ok(dm):
@@ -111,10 +114,15 @@ def main():
                 skipped += 1
                 continue
             try:
+                approach = ((page["properties"].get("Outreach Approach") or {}).get("select") or {}).get("name", "")
+                if approach not in {"A", "B"}:
+                    print(f"KEPT ORIGINAL {label}: missing A/B approach")
+                    skipped += 1
+                    continue
                 result = client.responses.create(
                     model=settings.openai_model,
                     instructions=PROMPT,
-                    input=json.dumps({"candidate": cand, "old_draft": text_of(page, "Draft DM")},
+                    input=json.dumps({"candidate": cand, "outreach_approach": approach, "old_draft": text_of(page, "Draft DM")},
                                      ensure_ascii=False),
                     text={"format": {"type": "json_schema", "name": "draft_only",
                                      "strict": True,
@@ -129,8 +137,7 @@ def main():
                     print(f"KEPT ORIGINAL {label}: invalid or incomplete rewrite")
                     skipped += 1
                     continue
-                approach = (page["properties"].get("Outreach Approach") or {}).get("select") or {}
-                if fight_date_issue(cand, draft=dm, approach=approach.get("name", "A")):
+                if fight_date_issue(cand, draft=dm, approach=approach):
                     print(f"KEPT ORIGINAL {label}: fight-date verification failed")
                     skipped += 1
                     continue
@@ -140,7 +147,7 @@ def main():
                     skipped += 1
                     continue
                 if not args.apply:
-                    print(f"PREVIEW {label}:\n{dm}\n")
+                    print(f"PREVIEW {label}:\n{copy_ready_dm(dm)}\n")
                     updated += 1
                     continue
                 if backup is None:
@@ -156,10 +163,10 @@ def main():
                 backup.flush()
                 os.fsync(backup.fileno())
                 _patch_page(session, settings, page["id"],
-                            {"Draft DM": {"rich_text": _rich_text_value(dm)}})
+                            {"Draft DM": {"rich_text": _rich_text_value(copy_ready_dm(dm))}})
                 after = _retrieve_target_page(session, settings, page["id"])
                 if (not _stage_value(after, stage_id) == "Ready to Send"
-                        or text_of(after, "Draft DM") != dm
+                        or text_of(after, "Draft DM") != copy_ready_dm(dm)
                         or text_of(after, RECEIPT).strip()
                         or after["properties"].get("Qualified At") != live["properties"].get("Qualified At")
                         or after["properties"].get("Priority Score") != live["properties"].get("Priority Score")):
