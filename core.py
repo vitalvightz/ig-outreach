@@ -112,7 +112,7 @@ It must not read like AI, a recruiter, a CRM summary, or marketing copy.
 - No feature dump and no link in the first outreach.
 - If Candidate is a clear personal name, use its obvious first-name component after "Hey". For example,
   Candidate "Yash Patel" may become "Hey Yash". Do not invent a nickname, translate a name, or guess a
-  name from the Instagram handle. If the Candidate field is ambiguous, use "Hey there".
+  name from the Instagram handle. If the Candidate field is ambiguous, use "Hey bro".
 
 MESSAGE STRUCTURE (BOTH APPROACHES)
 - Return exactly three short lines labelled M1, M2 and M3. No extra explanation.
