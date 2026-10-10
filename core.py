@@ -46,7 +46,8 @@ IMPORTANT: PROSPECT DATA IS RESEARCH NOTES, NOT MESSAGE COPY.
   date against today when evaluating an upcoming fight. A past publication date is
   not proof of an expired fight.
 - For an upcoming fight, require a verified calendar date with day, month and year.
-  Never treat an expired fight as upcoming.
+  Never treat an expired fight as upcoming. If the date is historical, choose
+  another independently supported recent hook for Approach A, if one exists.
 - The date and venue of an event alone do NOT establish that this particular athlete
   is competing there. Require evidence linking the athlete to the card or fight,
   such as a named fight poster, athlete confirmation or an opponent announcement.
@@ -74,8 +75,38 @@ QUALIFICATION
 - UK athletes are preferred, but strong international candidates can qualify.
 - Follower count, fame, purse, and whether they won or lost are not qualification criteria.
 - A genuine recent public detail must exist before a DM can be drafted.
-- If the supplied detail is too vague to personalise safely, mark evidence_sufficient false
-  rather than inventing context.
+- Evidence can be any ONE of these eight independent categories. An upcoming
+  fight is NOT required for Approach A:
+  1. RECENT RESULT: named bout, opponent, tournament, award or title, clearly
+     tied to the boxer with enough context to identify it and assess recency.
+  2. CURRENT CAMP: explicit evidence that the boxer is in camp now, not a
+     generic claim that they regularly train.
+  3. UPCOMING FIGHT: this specific boxer is confirmed competing and the full
+     calendar date is supplied; no unverified event-card inference.
+  4. CURRENT GYM: named gym with a public indication of current membership or
+     training there. Do not require an upcoming fight or a competition date.
+  5. COACH/TEAM: named coach or team with publicly indicated current affiliation.
+     Merely tagging a coach or listing a historic coach is not proof.
+  6. RECENT TRAINING POST: a specific boxing drill, padwork, sparring, session or
+     achievement with a stated recent post date or clearly recent context.
+  7. RETURN FROM LAYOFF: explicit public statement of the boxer returning to
+     training or competing after time away; do not invent injury details.
+  8. WEIGHT-CLASS MOVE: explicit public statement of changing weight classes;
+     avoid inferred moves from weigh-in photos or different fight weights.
+- For ongoing gym/coach/team membership, a current explicitly supported
+  affiliation can qualify without an exact event date. Recent results and posts
+  need a credible time anchor. Undated ambiguous old claims need more research.
+- Past results remain Approach A. An expired fight listing is not an upcoming
+  fight and does not, by itself, make the person ineligible; if another
+  independently verified recent hook exists, use that instead.
+- If the supplied detail is too vague to personalise safely, mark
+  evidence_sufficient false and say WHICH missing fact is needed. Never demand
+  a fight date when the selected hook is training, gym, coach/team, layoff return
+  or a weight-class move.
+- A coach-only or manager-only profile is not an active boxing-athlete prospect
+  unless the notes also establish that person actively trains or competes.
+- Distinguish evidence insufficiency from ineligibility. Do not set
+  eligible=false merely because a date or other research detail is missing.
 
 PRIORITY SCORE (0-100)
 - The numeric score is assigned deterministically after qualification. Do not try to reward prestige.
@@ -205,7 +236,7 @@ _FIGHT_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 _UPCOMING_RE = re.compile(
-    r"\b(upcoming|coming up|locked in|tomorrow|next week|fight week|"
+    r"\b(upcoming|coming up|next up|locked in|tomorrow|next week|fight week|"
     r"\d+\s+weeks?\s+(?:out|to go)|(?:a |one |two |three |few )weeks?\s+(?:out|to go))\b",
     re.IGNORECASE,
 )
@@ -223,6 +254,37 @@ _ATHLETE_EVENT_LINK_RE = re.compile(
     r"joins?|features?|featuring|faces?|facing|takes?\s+on|vs\.?|versus|on\s+(?:the\s+)?card)\b",
     re.IGNORECASE,
 )
+_INDEPENDENT_HOOK_RE = re.compile(
+    r"\b(?:"
+    r"(?:recent(?:ly)?|last week|this week)\s+(?:boxing\s+)?(?:training|"
+    r"sparring|pad\s*work|padwork|session|drill|workout|bout|win|result)|"
+    r"(?:posted|shared)\s+(?:a\s+)?(?:boxing|training|sparring|padwork|pad\s*work)\b|"
+    r"(?:won|winning|picked up|earned|defeated|beat)\s+[\w\s-]{1,65}"
+    r"(?:title|belt|medal|final|tournament|championship|cup)\b|"
+    r"(?:back|return(?:ed|ing)?)\s+(?:to|in)\s+(?:boxing|training|the gym|the ring)\b|"
+    r"(?:moving|moved|switch(?:ed|ing)?)\s+(?:up|down|to)\s+"
+    r"(?:\d{2,3}\s*(?:kg|lb|lbs)|(?:light|middle|welter|heavy|feather)\w*weight)\b|"
+    r"(?:train(?:s|ing)?\s+(?:at|with)|currently\s+(?:at|with)|"
+    r"coach(?:ed)?\s+by|signed\s+(?:with|to)|joined\s+team)\s+"
+    r"[@A-Za-z][\w.@\s-]{2,45}"
+    r")\b",
+    re.IGNORECASE,
+)
+_CANCELLED_EVENT_RE = re.compile(
+    r"\b(?:cancelled|canceled|called off|postponed|scrapped)\b", re.IGNORECASE
+)
+_FUTURE_FIGHT_DRAFT_RE = re.compile(
+    r"\b(?:upcoming\s+(?:fight|bout)|fight\s+(?:coming up|on the|on \d)|"
+    r"fighting\s+(?:on|at|in)|bout\s+(?:on|coming up)|"
+    r"fight night gets closer)\b", re.IGNORECASE
+)
+
+
+def has_independent_non_event_hook(evidence: str) -> bool:
+    """Conservative fallback; the AI still determines whether evidence is genuine."""
+    return bool(_INDEPENDENT_HOOK_RE.search(evidence))
+
+
 _RELATIVE_DM_RE = re.compile(
     r"\b(tomorrow|next week|this weekend|in (?:a |the )?few days|"
     r"in (?:\d+|one|two|three|four)\s+(?:days?|weeks?)|"
@@ -286,6 +348,12 @@ def fight_date_issue(
     evidence = candidate.get("personalised_dm_angle", "")
     future, past = [], []
     upcoming, partial_date, generic_event_without_athlete = False, False, False
+    independent_hook = has_independent_non_event_hook(evidence)
+    # When source notes contain both a valid training/affiliation hook and
+    # a stale or unverified fight listing, let the AI choose Approach A.
+    using_other_hook = independent_hook and approach != "B" and not bool(
+        _FUTURE_FIGHT_DRAFT_RE.search(draft)
+    )
     for part in re.split(r"\s*\+\s*|[;\n]", evidence):
         if not _FIGHT_CONTEXT_RE.search(part):
             continue
@@ -314,6 +382,17 @@ def fight_date_issue(
             generic_event_without_athlete = True
 
     claims_future = bool(re.search(r"\b(coming up|upcoming|locked in|fight night gets closer)\b", draft, re.I))
+    current_camp = bool(re.search(
+        r"\b(current(?:ly)?(?:\s+\w+){0,3}\s+camp|in\s+camp|camp\b.{0,40}\bcurrent)\b",
+        evidence, re.I
+    ))
+    if _CANCELLED_EVENT_RE.search(evidence) and upcoming and not using_other_hook and not current_camp:
+        return "Needs Research", (
+            "Needs research: notes mention a cancelled/postponed event. Confirm a "
+            "replacement fight, or give another recent boxing detail for Private Beta."
+        )
+    if using_other_hook:
+        return None
     if upcoming and not future and past:
         stale = past[0]
         if any(stale.day == 1 and _MONTH_YEAR_RE.search(p) for p in re.split(r"\s*\+\s*|[;\n]", evidence)):
@@ -321,20 +400,19 @@ def fight_date_issue(
         return "Rejected", f"Rejected: purported upcoming fight was on {stale:%d %B %Y}, before today ({today:%d %B %Y})."
     if past and claims_future and not future:
         return "Rejected", f"Rejected: draft describes a past fight as upcoming (today: {today:%d %B %Y})."
-    if upcoming and not future:
+    if upcoming and not future and not current_camp:
         return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
     if generic_event_without_athlete and future:
         return ("Needs Research", "Needs research: the event date is provided, but the notes "
                 "do not confirm this boxer is actually competing on that card. "
                 "Verify the athlete's participation before requeuing.")
-    current_camp = bool(re.search(r"\b(current(?:ly)?(?:\s+\w+){0,3}\s+camp|in\s+camp|camp\b.{0,40}\bcurrent)\b", evidence, re.I))
-    if approach == "B" and partial_date and not future:
+    if approach == "B" and partial_date and not future and not current_camp:
         return "Needs Research", "Needs research: confirm the event year and full fight date before sending."
     if (approach == "B" or claims_future) and not future and not current_camp:
         return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
     if draft and _RELATIVE_DM_RE.search(draft):
         return "Needs Research", "Needs research: draft uses relative fight timing. Use a verified exact calendar date."
-    if draft and (approach == "B" or claims_future) and future and not _draft_mentions_verified_future_date(draft, future, today):
+    if draft and _FUTURE_FIGHT_DRAFT_RE.search(draft) and future and not _draft_mentions_verified_future_date(draft, future, today):
         return "Needs Research", "Needs research: upcoming fight DM must state the verified date naturally (day only this month, otherwise month and day)."
     return None
 
