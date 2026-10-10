@@ -721,6 +721,65 @@ class IntegrationTests(unittest.TestCase):
         self.notion.fail_query = False
         self.assertEqual(self.sync(NOW + timedelta(days=1)), 0)
 
+    def test_worker_recovers_from_ai_date_wording_without_research_penalty(self):
+        page = prospect(qualified=False, stage="AI Queue")
+        page["properties"]["Personalised DM Angle"] = text(
+            "Confirmed upcoming fight on 24 October 2026 vs Smith")
+        self.notion = FakeNotion([page])
+        result = {
+            "eligible": True, "evidence_sufficient": True, "priority_score": 85,
+            "qualification_reason": "Confirmed bout", "outreach_approach": "B",
+            "draft_dm": "M1: Hey Fighter, saw your fight coming up in two weeks.\n"
+                        "M2: We're offering early access to Unlxck.\nM3: Want the details?",
+        }
+        corrected = dict(result, draft_dm=(
+            "M1: Hey Fighter, saw your fight on the 24th.\n"
+            "M2: We're offering early access to Unlxck.\nM3: Want the details?"
+        ))
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[page]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft", side_effect=[result, corrected]) as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        self.assertEqual(ai.call_count, 2)
+        self.assertIn("correction", ai.call_args.kwargs)
+        saved = self.notion.pages[page["id"]]["properties"]
+        self.assertEqual(saved["stage"]["select"]["name"], "Ready to Send")
+        self.assertIn("24th", saved["Draft DM"]["rich_text"][0]["text"]["content"])
+        self.assertIsNotNone(receipt(self.notion.pages[page["id"]]))
+
+    def test_worker_does_not_loop_if_date_wording_remains_invalid(self):
+        page = prospect(qualified=False, stage="AI Queue")
+        page["properties"]["Personalised DM Angle"] = text(
+            "Confirmed upcoming fight on 24 October 2026 vs Smith")
+        self.notion = FakeNotion([page])
+        bad = {
+            "eligible": True, "evidence_sufficient": True, "priority_score": 85,
+            "qualification_reason": "Confirmed bout", "outreach_approach": "B",
+            "draft_dm": "M1: Hey Fighter, fight coming up in two weeks.\n"
+                        "M2: We're offering early access to Unlxck.\nM3: Want the details?",
+        }
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[page]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft", side_effect=[bad, bad]) as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        self.assertEqual(ai.call_count, 2)
+        props = self.notion.pages[page["id"]]["properties"]
+        self.assertEqual(props["stage"]["select"]["name"], "Needs Research")
+        self.assertIn("AI draft", props["AI Qualification Reason"]["rich_text"][0]["text"]["content"])
+        self.assertIsNone(receipt(self.notion.pages[page["id"]]))
+
     def test_worker_atomic_qualification_and_failure_clear(self):
         page = prospect(qualified=False, stage="AI Queue")
         self.notion.pages = {page["id"]: page}
