@@ -240,6 +240,15 @@ _UPCOMING_RE = re.compile(
     r"\d+\s+weeks?\s+(?:out|to go)|(?:a |one |two |three |few )weeks?\s+(?:out|to go))\b",
     re.IGNORECASE,
 )
+_NO_UPCOMING_FIGHT_RE = re.compile(
+    r"\b(?:no|not|without)\s+(?:(?:verified|confirmed|scheduled|currently)\s+){0,2}"
+    r"(?:upcoming|future|next)\s+(?:fight|bout|event|card)\b",
+    re.IGNORECASE,
+)
+_UPCOMING_SECTION_HEADER_RE = re.compile(
+    r"\bupcoming\s+(?:one\s+)?(?:event|fight|bout)\s*:\s*",
+    re.IGNORECASE,
+)
 _POSTED_DATE_PREFIX_RE = re.compile(
     r"\b(?:post(?:ed)?|published|uploaded|announced|shared)\s+(?:(?:on|at|dated)\s*)?$",
     re.IGNORECASE,
@@ -256,7 +265,7 @@ _ATHLETE_EVENT_LINK_RE = re.compile(
 )
 _INDEPENDENT_HOOK_RE = re.compile(
     r"\b(?:"
-    r"(?:recent(?:ly)?|last week|this week)\s+(?:boxing\s+)?(?:training|"
+    r"(?:recent(?:ly)?|last week|this week)\s+(?:boxing\s+)?(?:match|fight|training|"
     r"sparring|pad\s*work|padwork|session|drill|workout|bout|win|result)|"
     r"(?:posted|shared)\s+(?:a\s+)?(?:boxing|training|sparring|padwork|pad\s*work)\b|"
     r"(?:won|winning|picked up|earned|defeated|beat)\s+[\w\s-]{1,65}"
@@ -357,7 +366,12 @@ def fight_date_issue(
     for part in re.split(r"\s*\+\s*|[;\n]", evidence):
         if not _FIGHT_CONTEXT_RE.search(part):
             continue
-        is_upcoming = bool(_UPCOMING_RE.search(part))
+        # "No upcoming fight confirmed" and research section headings are
+        # negative evidence, not claims of a scheduled bout.
+        positive_text = _UPCOMING_SECTION_HEADER_RE.sub(
+            "", _NO_UPCOMING_FIGHT_RE.sub("", part)
+        )
+        is_upcoming = bool(_UPCOMING_RE.search(positive_text))
         upcoming |= is_upcoming
         matches = _dated_matches(part)
         event_dates = [value for value, start, _ in matches
