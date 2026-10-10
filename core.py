@@ -137,7 +137,7 @@ Choose the strongest relevant angle using only verified prospect context:
 - Verified style or conditioning goal: style-specific conditioning.
 - Verified heavy training schedule: readiness-guided load decisions, without assuming fatigue.
 - Explicit interest in round-based drills: session timer.
-- Otherwise: personalised training around goals and daily readiness.
+- Otherwise: boxing-specific strength and conditioning built around their training.
 These are alternatives, not a checklist. Use only ONE angle in M2.
 
 M2 EXAMPLES (STYLE REFERENCES, NOT FIXED SCRIPTS)
@@ -148,7 +148,7 @@ verified context. Never infer a training problem from fight timing alone.
 - Fight in 7+ days: "We're giving fighters early access to Unlxck to plan conditioning around sparring and fight night."
 - Recently fought: "We're giving fighters early access to Unlxck to structure the next training block around recovery."
 - Current camp: "We're giving fighters early access to Unlxck to fit conditioning around existing sparring sessions."
-- No scheduled fight: "We're giving fighters early access to Unlxck for training built around their goals and daily readiness."
+- No scheduled fight: "We're giving fighters early access to Unlxck to build boxing-specific strength and conditioning around their training."
 - Disclosed injury: "We're giving fighters early access to Unlxck to adjust training around injury restrictions and recovery."
 - Timer interest: "We're giving fighters early access to Unlxck for round timers that keep conditioning sessions organised."
 Select one relevant benefit; do not combine examples, repeat hooks, or claim guaranteed results.
@@ -158,7 +158,7 @@ Use for qualified prospects without a verified current camp or future fight, inc
 recently completed fights. Apply the same M1/M2/M3 structure with an appropriate angle.
 Example for a verified recent achievement:
 M1: Yo John, saw you picked up your second European title.
-M2: We're giving fighters early access to Unlxck for training built around their goals and readiness.
+M2: We're giving fighters early access to Unlxck to build boxing-specific strength and conditioning around their training.
 M3: Want the details?
 
 APPROACH B: CAMP PRIORITY
