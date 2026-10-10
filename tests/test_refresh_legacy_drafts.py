@@ -14,7 +14,7 @@ class LegacyDraftRefreshTests(unittest.TestCase):
         self.assertTrue(dm_ok(dm))
 
     def test_reuses_production_message_copy_rules(self):
-        production = AI_INSTRUCTIONS.split("VOICE AND STYLE\\n", 1)[1]
+        production = AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1]
         self.assertIn("M2 EXAMPLES (STYLE REFERENCES", PROMPT)
         self.assertIn("Want the details?", PROMPT)
         self.assertIn("We're giving fighters early access to Unlxck", PROMPT)
