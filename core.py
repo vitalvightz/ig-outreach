@@ -392,6 +392,8 @@ def fight_date_issue(
             "replacement fight, or give another recent boxing detail for Private Beta."
         )
     if using_other_hook:
+        if draft and _RELATIVE_DM_RE.search(draft):
+            return "Needs Research", "Needs research: draft uses relative fight timing. Use verified wording."
         return None
     if upcoming and not future and past:
         stale = past[0]
