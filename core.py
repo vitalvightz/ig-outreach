@@ -163,8 +163,9 @@ M3: Want the details?
 
 APPROACH B: CAMP PRIORITY
 Use only for a verified current camp or future fight. Do not invent camp status
-from a confirmed fight date. Include the exact verified day, month and year in M1
-for any upcoming fight; the short-message target never overrides this requirement.
+from a confirmed fight date. Verify the full date, including year, internally.
+In M1 say only the ordinal for the current month, or month and ordinal otherwise.
+Never include the year in the DM.
 Example for a verified future fight:
 M1: Yo Sam, saw you've got a fight on the 24th.
 M2: We're giving fighters early access to Unlxck to plan conditioning around sparring and fight night.
