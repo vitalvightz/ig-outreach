@@ -26,7 +26,10 @@ PROMPT = (
     "Only use evidenced facts from the candidate research and old draft. "
     "Never position weigh-ins, weight cutting or refuelling as the Unlxck benefit. "
     "If a safe personalised draft cannot be produced, return an empty string.\n\n"
-    + AI_INSTRUCTIONS.split("QUALIFICATION\n", 1)[0]
+    + "Do not invent fight dates, titles, results, injuries, gyms, camps or athlete pain points. "
+    + "Keep the original supported M1 hook if possible. "
+    + "Use a past event as past; never claim an expired fight is upcoming.\n\n"
+    + "VOICE AND STYLE\n"
     + AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1].split("\nIf evidence is insufficient,", 1)[0]
 )
 
