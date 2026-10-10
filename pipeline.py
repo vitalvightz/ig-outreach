@@ -552,6 +552,29 @@ def run_outreach() -> int:
             timing_issue = fight_date_issue(
                 candidate, draft=result["draft_dm"], approach=result["outreach_approach"],
             )
+            # Don't punish a well-researched prospect because the first AI
+            # draft used an unsuitable date. Allow one bounded model retry.
+            if (timing_issue and timing_issue[0] == NEEDS_RESEARCH
+                    and result.get("eligible") is True
+                    and result.get("evidence_sufficient") is True
+                    and ("draft uses relative" in timing_issue[1]
+                         or "upcoming fight DM must state" in timing_issue[1])):
+                print(f"Retrying date wording for {label} without changing source research")
+                result = qualify_and_draft(client, settings, candidate,
+                                           correction=timing_issue[1])
+                timing_issue = fight_date_issue(
+                    candidate, draft=result["draft_dm"],
+                    approach=result["outreach_approach"],
+                )
+                if (timing_issue and timing_issue[0] == NEEDS_RESEARCH
+                        and ("draft uses relative" in timing_issue[1]
+                             or "upcoming fight DM must state" in timing_issue[1])):
+                    timing_issue = (
+                        NEEDS_RESEARCH,
+                        "AI draft could not meet safe date wording after retry. "
+                        "The research may already be sufficient; requeue to AI Queue "
+                        "for another draft rather than changing verified facts.",
+                    )
             if timing_issue:
                 stage, reason = timing_issue
                 _mark_terminal(
