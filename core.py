@@ -232,7 +232,7 @@ _FIGHT_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _FIGHT_CONTEXT_RE = re.compile(
-    r"\b(fight|bout|vs|versus|debut|championships?|camp|poster|card|locked in|worlds|events?|shows?|tournaments?)\b",
+    r"\b(fight|bout|vs|versus|debut|championships?|camp|poster|card|locked in|next up|worlds|events?|shows?|tournaments?)\b",
     re.IGNORECASE,
 )
 _UPCOMING_RE = re.compile(
@@ -408,7 +408,7 @@ def fight_date_issue(
         return ("Needs Research", "Needs research: the event date is provided, but the notes "
                 "do not confirm this boxer is actually competing on that card. "
                 "Verify the athlete's participation before requeuing.")
-    if approach == "B" and partial_date and not future and not current_camp:
+    if approach == "B" and partial_date and not future:
         return "Needs Research", "Needs research: confirm the event year and full fight date before sending."
     if (approach == "B" or claims_future) and not future and not current_camp:
         return "Needs Research", "Needs research: camp priority requires confirmed current camp or a full future fight date."
