@@ -13,26 +13,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import OpenAI
-from core import Settings, _plain_text, _rich_text_value, candidate_from_page, fight_date_issue
+from core import Settings, _plain_text, _rich_text_value, candidate_from_page, fight_date_issue, AI_INSTRUCTIONS
 from daily_counter import NotionSession
 from pipeline import _patch_page, _query_stage_filter, _resolve_stage_property_id, _retrieve_target_page, _stage_value
 from qualification import RECEIPT, grandfathered_without_receipt, receipt
 
-PROMPT = """You write a personalised private-beta cold Instagram DM for boxing fighters.
-This is COPY EDITING ONLY: do not make a new eligibility/qualification decision.
-Use only verified facts present in the supplied original research; never invent fight
-dates, titles, injuries, gyms, outcomes, aspirations, or training problems.
-Keep M1's original verified personal hook where still contextually appropriate.
-Use the existing draft for tone but never treat unsupported claims as facts.
-Exactly three nonempty lines: M1: ..., M2: ..., M3: Want the details?
-M1 starts "Yo [first name]," and is short, specific, and natural.
-M2 introduces 'early access to Unlxck' and ONE situationally relevant benefit:
-camp planning, conditioning around sparring, readiness, or training priorities.
-No promises of injury prevention or guaranteed outcomes.
-For events already passed, don't promote upcoming fight preparation for that event.
-25–40 words total, ideally. No extra explanations or metadata.
-If there's insufficient evidence to write a safe personalised M1, output an empty draft.
-"""
+# Reuse the live production drafting instructions rather than a second style prompt.
+# No qualification instructions or re-qualification output for legacy pages.
+PROMPT = (
+    "Rewrite this already-approved unsent draft for copy only. Do not make a "
+    "qualification decision, change their status, or request more research. "
+    "Only use evidenced facts from the candidate research and old draft. "
+    "Never position weigh-ins, weight cutting or refuelling as the Unlxck benefit. "
+    "If a safe personalised draft cannot be produced, return an empty string.\n\n"
+    + AI_INSTRUCTIONS.split("QUALIFICATION\n", 1)[0]
+    + AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1].split("\nIf evidence is insufficient,", 1)[0]
+)
+
 
 def text_of(page, name):
     return _plain_text(page["properties"].get(name))
@@ -57,6 +54,8 @@ def dm_ok(dm):
     if lines[2] != "M3: Want the details?":
         return False
     if "early access to Unlxck" not in lines[1]:
+        return False
+    if any(term in dm.lower() for term in ("weigh-in", "weigh in", "weight cut", "refuelling", "refueling")):
         return False
     total = sum(len(line.split()) - 1 for line in lines)
     return 23 <= total <= 45
