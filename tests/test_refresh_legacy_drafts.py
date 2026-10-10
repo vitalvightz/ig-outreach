@@ -1,5 +1,6 @@
 import unittest
-from tools.refresh_legacy_drafts import dm_ok, eligible
+from tools.refresh_legacy_drafts import dm_ok, eligible, PROMPT
+from core import AI_INSTRUCTIONS
 from unittest.mock import patch
 
 
@@ -11,6 +12,14 @@ class LegacyDraftRefreshTests(unittest.TestCase):
             "M3: Want the details?"
         )
         self.assertTrue(dm_ok(dm))
+
+    def test_reuses_production_message_copy_rules(self):
+        production = AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1]
+        self.assertIn("M2 EXAMPLES (STYLE REFERENCES", PROMPT)
+        self.assertIn("Want the details?", PROMPT)
+        self.assertIn("We're giving fighters early access to Unlxck", PROMPT)
+        self.assertIn(production.split("M2 EXAMPLES (STYLE REFERENCES", 1)[0].strip(), PROMPT)
+        self.assertNotIn("QUALIFICATION\\n-", PROMPT)
 
     def test_old_or_unqualified_copy(self):
         self.assertFalse(dm_ok("Yo Josh, saw your recent fight. Want me to send details?"))
