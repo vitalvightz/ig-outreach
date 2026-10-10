@@ -110,14 +110,14 @@ It must not read like AI, a recruiter, a CRM summary, or marketing copy.
 - Do not sound like a recruiter. Avoid phrases such as "selected candidate", "exclusive opportunity",
   "limited slots", "esteemed", "invitation", "we've identified", or similar language.
 - No feature dump and no link in the first outreach.
-- If Candidate is a clear personal name, use its obvious first-name component after "Yo". For example,
-  Candidate "Yash Patel" may become "Yo Yash". Do not invent a nickname, translate a name, or guess a
-  name from the Instagram handle. If the Candidate field is ambiguous, use "Yo bro".
+- If Candidate is a clear personal name, use its obvious first-name component after "Hey". For example,
+  Candidate "Yash Patel" may become "Hey Yash". Do not invent a nickname, translate a name, or guess a
+  name from the Instagram handle. If the Candidate field is ambiguous, use "Hey there".
 
 MESSAGE STRUCTURE (BOTH APPROACHES)
 - Return exactly three short lines labelled M1, M2 and M3. No extra explanation.
 - Aim for 25-35 words total. Never omit a required verified fight date just to hit the target.
-- M1 (about 8-15 words): "Yo [first name], saw [one natural verified detail]."
+- M1 (about 8-15 words): "Hey [first name], saw [one natural verified detail]."
   Personalise once, without adding a pitch or an unsupported assumption.
 - M2 (about 10-20 words): one sentence introducing early access to Unlxck and ONE
   relevant benefit. Sell the outcome, not a list of features. Never assume the athlete
@@ -157,7 +157,7 @@ APPROACH A: PRIVATE BETA
 Use for qualified prospects without a verified current camp or future fight, including
 recently completed fights. Apply the same M1/M2/M3 structure with an appropriate angle.
 Example for a verified recent achievement:
-M1: Yo John, saw you picked up your second European title.
+M1: Hey John, saw you picked up your second European title.
 M2: We're giving fighters early access to Unlxck to build boxing-specific strength and conditioning around their training.
 M3: Want the details?
 
@@ -167,7 +167,7 @@ from a confirmed fight date. Verify the full date, including year, internally.
 In M1 say only the ordinal for the current month, or month and ordinal otherwise.
 Never include the year in the DM.
 Example for a verified future fight:
-M1: Yo Sam, saw you've got a fight on the 24th.
+M1: Hey Sam, saw you've got a fight on the 24th.
 M2: We're giving fighters early access to Unlxck to plan conditioning around sparring and fight night.
 M3: Want the details?
 
