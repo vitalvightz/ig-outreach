@@ -55,7 +55,7 @@ def new_draft_is_valid(text: str) -> bool:
     parts = [line.strip() for line in text.splitlines() if line.strip()]
     if len(parts) != 3 or parts[2] != "M3: Want the details?":
         return False
-    if not parts[0].startswith("M1: Yo ") or not parts[1].startswith("M2: "):
+    if not parts[0].startswith(("M1: Hey ", "M1: Yo ")) or not parts[1].startswith("M2: "):
         return False
     words_m2 = len(parts[1][4:].split())
     words_total = sum(len(p[4:].split()) for p in parts)
