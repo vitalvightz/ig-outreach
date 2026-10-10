@@ -36,7 +36,7 @@ def qualified_at(page: dict) -> str | None:
 def safe_unsent(page: dict, stage_id: str) -> bool:
     if _stage_value(page, stage_id) != "Ready to Send":
         return False
-    if "Want the details?" in _plain_text(page["properties"].get("Draft DM")):
+    if "M3: Want the details?" in _plain_text(page["properties"].get("Draft DM")):
         return False
     proof = receipt(page)
     if not proof or not proof["active"]:
@@ -171,12 +171,11 @@ def main() -> int:
             # Both fields are patched together; the original Qualified At is untouched.
             _patch_page(session, settings, candidate["page_id"], props)
             verified = _retrieve_target_page(session, settings, candidate["page_id"])
-            if not (unchanged(checked, verified, stage_id)
-                    or (_stage_value(verified, stage_id) == "Ready to Send"
-                        and _plain_text(verified["properties"].get("Draft DM")) == draft
-                        and receipt(verified) == new_proof
-                        and qualified_at(verified) == qualified_at(current)
-                        and approval_valid(verified, datetime.now(timezone.utc), unsent=True))):
+            if not (_stage_value(verified, stage_id) == "Ready to Send"
+                    and _plain_text(verified["properties"].get("Draft DM")) == draft
+                    and receipt(verified) == new_proof
+                    and qualified_at(verified) == qualified_at(current)
+                    and approval_valid(verified, datetime.now(timezone.utc), unsent=True)):
                 raise RuntimeError(f"Post-write verification failed for {name}; stop and inspect backup")
             print(f"UPDATED {name}: preserved original qualification timestamp")
             done += 1
