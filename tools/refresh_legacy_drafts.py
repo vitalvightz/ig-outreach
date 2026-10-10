@@ -29,6 +29,10 @@ PROMPT = (
     + "Do not invent fight dates, titles, results, injuries, gyms, camps or athlete pain points. "
     + "Keep the original supported M1 hook if possible. "
     + "Use a past event as past; never claim an expired fight is upcoming.\n\n"
+    + "The existing Outreach Approach is binding: A = PRIVATE BETA; B = CAMP PRIORITY. "
+    + "For B, use a camp-specific benefit only when notes verify camp or an upcoming bout. "
+    + "For A, do not imply a current camp or upcoming fight without evidence. "
+    + "Never change the approach; return an empty draft if a safe matching rewrite cannot be made.\n\n"
     + "VOICE AND STYLE\n"
     + AI_INSTRUCTIONS.split("VOICE AND STYLE\n", 1)[1].split("\nIf evidence is insufficient,", 1)[0]
 )
@@ -110,11 +114,16 @@ def main():
                 print(f"KEPT ORIGINAL {label}: insufficient research")
                 skipped += 1
                 continue
+            approach = ((page["properties"].get("Outreach Approach") or {}).get("select") or {}).get("name", "")
+            if approach not in {"A", "B"}:
+                print(f"KEPT ORIGINAL {label}: missing or unknown Outreach Approach")
+                skipped += 1
+                continue
             try:
                 result = client.responses.create(
                     model=settings.openai_model,
                     instructions=PROMPT,
-                    input=json.dumps({"candidate": cand, "old_draft": text_of(page, "Draft DM")},
+                    input=json.dumps({"candidate": cand, "outreach_approach": approach, "old_draft": text_of(page, "Draft DM")},
                                      ensure_ascii=False),
                     text={"format": {"type": "json_schema", "name": "draft_only",
                                      "strict": True,
@@ -129,8 +138,7 @@ def main():
                     print(f"KEPT ORIGINAL {label}: invalid or incomplete rewrite")
                     skipped += 1
                     continue
-                approach = (page["properties"].get("Outreach Approach") or {}).get("select") or {}
-                if fight_date_issue(cand, draft=dm, approach=approach.get("name", "A")):
+                if fight_date_issue(cand, draft=dm, approach=approach):
                     print(f"KEPT ORIGINAL {label}: fight-date verification failed")
                     skipped += 1
                     continue
