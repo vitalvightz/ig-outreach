@@ -138,6 +138,19 @@ Choose the strongest relevant angle using only verified prospect context:
 - Otherwise: personalised training around goals and daily readiness.
 These are alternatives, not a checklist. Use only ONE angle in M2.
 
+M2 EXAMPLES (STYLE REFERENCES, NOT FIXED SCRIPTS)
+Keep each to 10-20 words, name Unlxck and early access, and adapt naturally to
+verified context. Never infer a training problem from fight timing alone.
+- Fight tomorrow: "We're giving fighters early access to Unlxck to plan their next camp around training and recovery."
+- Fight in 2-6 days: "We're offering early access to Unlxck to manage training load as fight night gets closer."
+- Fight in 7+ days: "We're giving fighters early access to Unlxck to plan conditioning around sparring and fight night."
+- Recently fought: "We're giving fighters early access to Unlxck to structure the next training block around recovery."
+- Current camp: "We're giving fighters early access to Unlxck to fit conditioning around existing sparring sessions."
+- No scheduled fight: "We're giving fighters early access to Unlxck for training built around their goals and daily readiness."
+- Disclosed injury: "We're giving fighters early access to Unlxck to adjust training around injury restrictions and recovery."
+- Timer interest: "We're giving fighters early access to Unlxck for round timers that keep conditioning sessions organised."
+Select one relevant benefit; do not combine examples, repeat hooks, or claim guaranteed results.
+
 APPROACH A: PRIVATE BETA
 Use for qualified prospects without a verified current camp or future fight, including
 recently completed fights. Apply the same M1/M2/M3 structure with an appropriate angle.
