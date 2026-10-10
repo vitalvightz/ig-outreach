@@ -16,6 +16,7 @@ from pathlib import Path
 from openai import OpenAI
 
 from core import (
+    copy_ready_dm,
     AI_INSTRUCTIONS, Settings, _plain_text, _rich_text_value, candidate_from_page,
     fight_date_issue, qualify_and_draft,
 )
@@ -37,7 +38,7 @@ def qualified_at(page: dict) -> str | None:
 def safe_unsent(page: dict, stage_id: str) -> bool:
     if _stage_value(page, stage_id) != "Ready to Send":
         return False
-    if "M3: Want the details?" in _plain_text(page["properties"].get("Draft DM")):
+    if _plain_text(page["properties"].get("Draft DM")).strip().endswith("Want the details?"):
         return False
     proof = receipt(page)
     if not proof or not proof["active"]:
@@ -137,7 +138,7 @@ def main() -> int:
 
             old_proof = receipt(current)
             assert old_proof is not None
-            new_dm_props = {"Draft DM": {"rich_text": _rich_text_value(draft)}}
+            new_dm_props = {"Draft DM": {"rich_text": _rich_text_value(copy_ready_dm(draft))}}
             proposed = apply_properties(current, new_dm_props)
             new_proof = new_receipt(proposed, old_proof.get("at"), legacy=old_proof["legacy"])
             props = {**new_dm_props, RECEIPT: receipt_properties(new_proof)[RECEIPT]}
@@ -176,7 +177,7 @@ def main() -> int:
             _patch_page(session, settings, candidate["page_id"], props)
             verified = _retrieve_target_page(session, settings, candidate["page_id"])
             if not (_stage_value(verified, stage_id) == "Ready to Send"
-                    and _plain_text(verified["properties"].get("Draft DM")) == draft
+                    and _plain_text(verified["properties"].get("Draft DM")) == copy_ready_dm(draft)
                     and receipt(verified) == new_proof
                     and qualified_at(verified) == qualified_at(current)
                     and approval_valid(verified, datetime.now(timezone.utc), unsent=True)):
