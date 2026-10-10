@@ -1,7 +1,8 @@
 import unittest
 from datetime import date
 
-from core import deterministic_priority_score, fight_date_issue, preflight_reason, validate_ai_result
+from core import (AI_INSTRUCTIONS, deterministic_priority_score, fight_date_issue,
+                  has_independent_non_event_hook, preflight_reason, validate_ai_result)
 
 
 class OutreachLogicTests(unittest.TestCase):
@@ -123,6 +124,112 @@ class OutreachLogicTests(unittest.TestCase):
         self.assertIsNone(fight_date_issue(
             athlete, draft="Yo Mikael, saw you made your UK debut at Home Stretch.",
             approach="A", today=date(2026, 10, 9)))
+
+    def test_every_sop_hook_can_be_independently_assessed(self):
+        # No upcoming fight is required for Approach A.
+        hooks = {
+            "recent_result": "Won the U60 NAC title on 3 October 2026 at Sheffield Arena",
+            "gym": "Currently training at Bristol Boxing Academy, shown in gym post on 4 October 2026",
+            "coach": "Coached by @coachthomas at East London Boxing Club",
+            "training_post": "Shared padwork footage from Saturday 3 October 2026",
+            "layoff_return": "Returned to boxing after a year off, announced 2 October 2026",
+            "weight_class_move": "Moved to 63kg as announced on 1 October 2026",
+        }
+        for label, evidence in hooks.items():
+            with self.subTest(category=label):
+                self.assertTrue(has_independent_non_event_hook(evidence))
+                self.assertIsNone(fight_date_issue(
+                    {"personalised_dm_angle": evidence},
+                    draft="M1: Hey boxer, saw your recent activity. M2: We're giving early access.",
+                    approach="A", today=date(2026, 10, 10)))
+        self.assertIsNone(fight_date_issue(
+            {"personalised_dm_angle": "Currently in camp at Team GB on 6 October 2026"},
+            draft="M1: Hey boxer, saw you're currently in camp.",
+            approach="B", today=date(2026, 10, 10)))
+        self.assertIsNone(fight_date_issue(
+            {"personalised_dm_angle": "Confirmed fighting on 24 October 2026 vs James Smith"},
+            draft="M1: Hey boxer, saw you've got a fight on the 24th.",
+            approach="B", today=date(2026, 10, 10)))
+
+    def test_model_guidance_explicitly_covers_all_eight_sop_hook_types(self):
+        for kind in ("RECENT RESULT", "CURRENT CAMP", "UPCOMING FIGHT",
+                     "CURRENT GYM", "COACH/TEAM", "RECENT TRAINING POST",
+                     "RETURN FROM LAYOFF", "WEIGHT-CLASS MOVE"):
+            with self.subTest(category=kind):
+                self.assertIn(kind, AI_INSTRUCTIONS)
+
+    def test_old_future_fight_with_current_gym_is_private_beta_not_rejection(self):
+        athlete = {"personalised_dm_angle":
+                   "Next up 7 March 2026 at Bolton, now training at Manchester Boxing Club "
+                   "as confirmed in a 3 October 2026 gym post."}
+        self.assertIsNone(fight_date_issue(athlete, approach="A",
+                                          draft="M1: Hey boxer, saw you're training at Manchester Boxing Club.",
+                                          today=date(2026, 10, 10)))
+        self.assertEqual(fight_date_issue(
+            athlete, approach="B",
+            draft="M1: Hey boxer, saw you've got a fight coming up.",
+            today=date(2026, 10, 10))[0], "Rejected")
+
+    def test_unverified_upcoming_event_can_use_separate_recent_training(self):
+        athlete = {"personalised_dm_angle":
+                   "Upcoming event on 21 November 2026 in Bolton, boxer not yet confirmed. "
+                   "Shared sparring footage 5 October 2026."}
+        self.assertIsNone(fight_date_issue(
+            athlete, draft="M1: Hey boxer, saw your recent sparring footage.",
+            approach="A", today=date(2026, 10, 10)))
+        issue = fight_date_issue(
+            athlete, draft="M1: Hey boxer, saw your fight on November 21st.",
+            approach="B", today=date(2026, 10, 10))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("participation", issue[1])
+
+    def test_relative_fight_time_remains_blocked_even_with_valid_other_hook(self):
+        athlete = {"personalised_dm_angle":
+                   "Shared padwork footage on 2 October 2026, upcoming event in November"}
+        self.assertEqual(fight_date_issue(
+            athlete, draft="M1: saw your fight in two weeks.",
+            approach="A", today=date(2026, 10, 10))[0], "Needs Research")
+
+    def test_cancelled_card_not_treated_as_confirmed_future_fight(self):
+        athlete = {"personalised_dm_angle":
+                   "Upcoming Commonwealth title bout on 24 October 2026, poster says cancelled."}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 10))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("cancelled", issue[1])
+        athlete["personalised_dm_angle"] += " Shared padwork footage 3 October 2026."
+        self.assertIsNone(fight_date_issue(
+            athlete, approach="A", draft="M1: Hey boxer, saw your recent padwork.",
+            today=date(2026, 10, 10)))
+
+    def test_real_upcoming_event_header_still_requires_boxer_participation(self):
+        athlete = {"personalised_dm_angle":
+                   "Upcoming event: The Night of Champions on 24 October 2026"}
+        issue = fight_date_issue(athlete, today=date(2026, 10, 10))
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("participation", issue[1])
+
+    def test_coach_only_no_upcoming_is_not_flagged_for_missing_fight_date(self):
+        # Live Notion research: explicitly says no fight announced and focuses
+        # on coaching; the AI should decide boxer eligibility, not ask for dates.
+        athlete = {"personalised_dm_angle":
+                   "Recent match / activity: No pro fight poster found. HEAD Boxing Coach "
+                   "at Fighting Fit Manchester, coaching fighters. "
+                   "Upcoming one event: No upcoming fight confirmed, coaching-focused."}
+        self.assertIsNone(fight_date_issue(athlete, today=date(2026, 10, 10)))
+        self.assertIn("coach-only", AI_INSTRUCTIONS)
+
+    def test_recent_result_can_be_assessed_without_upcoming_camp_date(self):
+        athlete = {"personalised_dm_angle":
+                   "Recent match: boxed Jacob Marrer at the BOXXER Future Now card "
+                   "in Leeds on 20 December 2025. Upcoming camp: no verified date yet."}
+        self.assertIsNone(fight_date_issue(
+            athlete, approach="A", draft="M1: Hey Max, saw you boxed Jacob Marrer in Leeds.",
+            today=date(2026, 10, 10)))
+
+    def test_unknown_gym_or_generic_compliment_not_marked_verified(self):
+        for vague in ("training hard", "looks serious", "great profile", "generic boxing gym"):
+            with self.subTest(vague=vague):
+                self.assertFalse(has_independent_non_event_hook(vague))
 
     def test_preflight_requires_public_personalisation(self):
         candidate = {
