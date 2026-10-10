@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replace the exact old default M2 in existing unsent Ready to Send DMs.
+"""Replace the opening greeting in existing unsent Ready to Send DMs.
 
 Preview by default; --apply only with deployment lock. No OpenAI calls.
 Never changes stage, approach, qualification time, scoring, or contacted records.
@@ -15,7 +15,7 @@ from pathlib import Path
 from core import Settings, _plain_text, _rich_text_value
 from daily_counter import NotionSession, apply_properties
 from pipeline import _patch_page, _query_stage_filter, _resolve_stage_property_id, _retrieve_target_page, _stage_value
-from qualification import RECEIPT, QUALIFIED_AT, approval_valid, grandfathered_without_receipt, new_receipt, receipt, receipt_properties
+from qualification import RECEIPT, QUALIFIED_AT, approval_valid, grandfathered_without_receipt, new_receipt, receipt, receipt_properties, fingerprint
 
 
 def replacement(old):
@@ -115,14 +115,34 @@ def main():
             os.fsync(backup.fileno())
             _patch_page(session, settings, current["id"], planned)
             after = _retrieve_target_page(session, settings, current["id"])
-            if (_stage_value(after, stage_id) != "Ready to Send"
-                    or dm(after) != replacement(dm(original))
-                    or after["properties"].get(QUALIFIED_AT) != current["properties"].get(QUALIFIED_AT)
-                    or after["properties"].get("Priority Score") != current["properties"].get("Priority Score")
-                    or after["properties"].get("Outreach Approach") != current["properties"].get("Outreach Approach")
-                    or (receipt(current) is not None and not approval_valid(after, datetime.now(timezone.utc), unsent=True))
-                    or (receipt(current) is None and _plain_text(after["properties"].get(RECEIPT)).strip())):
-                raise RuntimeError(f"STOP: post-write verification failed for {label}; inspect backup")
+            problem = (
+                _stage_value(after, stage_id) != "Ready to Send"
+                or dm(after) != replacement(dm(original))
+                or after["properties"].get(QUALIFIED_AT) != current["properties"].get(QUALIFIED_AT)
+                or after["properties"].get("Priority Score") != current["properties"].get("Priority Score")
+                or after["properties"].get("Outreach Approach") != current["properties"].get("Outreach Approach")
+                or (receipt(current) is not None and (
+                    not receipt(after) or receipt(after)["fingerprint"] != fingerprint(after)
+                    or not approval_valid(after, datetime.now(timezone.utc), unsent=True)))
+                or (receipt(current) is None and _plain_text(after["properties"].get(RECEIPT)).strip())
+            )
+            if problem:
+                # Restore both fields together before the reconciler can see
+                # a mismatched approved message. Stop on first failed verification.
+                rollback = {
+                    "Draft DM": {"rich_text": _rich_text_value(dm(current))},
+                    RECEIPT: {"rich_text": _rich_text_value(
+                        _plain_text(current["properties"].get(RECEIPT)))},
+                }
+                _patch_page(session, settings, current["id"], rollback)
+                restored = _retrieve_target_page(session, settings, current["id"])
+                if (dm(restored) != dm(current)
+                        or _plain_text(restored["properties"].get(RECEIPT)) !=
+                        _plain_text(current["properties"].get(RECEIPT))
+                        or (receipt(current) is not None and
+                            not approval_valid(restored, datetime.now(timezone.utc), unsent=True))):
+                    raise RuntimeError(f"CRITICAL: rollback verification failed for {label}")
+                raise RuntimeError(f"STOP: post-write check failed for {label}; original draft and receipt restored")
             print(f"UPDATED {label}")
             done += 1
     finally:
