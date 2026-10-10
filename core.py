@@ -274,7 +274,7 @@ _CANCELLED_EVENT_RE = re.compile(
     r"\b(?:cancelled|canceled|called off|postponed|scrapped)\b", re.IGNORECASE
 )
 _FUTURE_FIGHT_DRAFT_RE = re.compile(
-    r"\b(?:upcoming\s+(?:fight|bout)|fight\s+(?:coming up|on the|on \d)|"
+    r"\b(?:upcoming\s+(?:fight|bout)|fight\s+(?:coming up|on\b)|"
     r"fighting\s+(?:on|at|in)|bout\s+(?:on|coming up)|"
     r"fight night gets closer)\b", re.IGNORECASE
 )
