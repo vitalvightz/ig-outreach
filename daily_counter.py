@@ -109,10 +109,13 @@ def ensure_schema(session, settings, *, apply=False):
     return additions
 
 
-def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_path=None):
+def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_path=None, contacted_counter_id=None):
     now = now or datetime.now(timezone.utc)
     state_path = state_path or os.getenv("OUTREACH_COUNTER_STATE", "var/daily-counter.sqlite3")
     path = Path(state_path)
+    counter_ids = {counter_id.replace("-", "")}
+    if contacted_counter_id:
+        counter_ids.add(contacted_counter_id.replace("-", ""))
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with closing(sqlite3.connect(path, timeout=1)) as db, db:
         path.chmod(0o600)
@@ -135,7 +138,7 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
         changed_ids = set()
         contact_transitions = set()
         for page in query_all(session, settings, filter_):
-            if page["id"].replace("-", "") != counter_id.replace("-", ""):
+            if page["id"].replace("-", "") not in counter_ids:
                 previous = cached.get(page["id"])
                 # Only stamp observed future transitions; never invent old contact dates
                 # when the checkpoint is absent or a legacy row is first discovered.
@@ -211,18 +214,31 @@ def sync_counter(session, settings, stage_id, counter_id, *, now=None, state_pat
                     api(session, settings, "patch", f"pages/{id_}", json={"properties": properties})
                 cached[id_] = apply_properties(page, properties)
         count = count_today(list(cached.values()), stage_id, now)
+        contacted = None
+        if contacted_counter_id:
+            london_day = now.astimezone(ZoneInfo("Europe/London")).date().isoformat()
+            contacted_pages = query_all(session, settings, {
+                "property": "Date Contacted", "date": {"equals": london_day},
+            })
+            contacted = len({handle for page in contacted_pages if (handle := profile(page))})
         if settings.dry_run:
             db.rollback()
-            print(f"Dry-run daily progress: {count}/50 (no checkpoint or Notion writes)")
+            print(f"Dry-run daily progress: {count}/50, contacted: {contacted}/35 (no writes)")
             return count
         api(session, settings, "patch", f"pages/{counter_id}", json={"properties": {
             "Candidate": {"title": [{"type": "text", "text": {"content": f"{count} / 50 complete"}}]},
             "Priority Score": {"number": count},
         }})
+        if contacted_counter_id:
+            api(session, settings, "patch", f"pages/{contacted_counter_id}", json={"properties": {
+                "Candidate": {"title": [{"type": "text", "text": {
+                    "content": f"{contacted} / 35 contacted today"}}]},
+                "Priority Score": {"number": contacted},
+            }})
         db.executemany("INSERT OR REPLACE INTO pages VALUES (?, ?)",
                        [(id_, json.dumps(page)) for id_, page in cached.items()])
         db.executemany("INSERT OR REPLACE INTO metadata VALUES (?, ?)",
                        [("checkpoint", now.isoformat()), ("source", settings.notion_data_source_id)])
         db.commit()
-        print(f"Daily progress: {count}/50")
+        print(f"Daily progress: {count}/50, contacted: {contacted}/35")
         return count

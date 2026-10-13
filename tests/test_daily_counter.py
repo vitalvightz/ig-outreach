@@ -342,6 +342,7 @@ class FakeNotion:
         self.pages = {p["id"]: copy.deepcopy(p) for p in pages}
         self.writes, self.queries = [], []
         self.counter = None
+        self.contacted_count = None
         self.fail_query = False
         self.fail_get = False
         self.fail_counter = False
@@ -372,6 +373,9 @@ class FakeNotion:
                 end = filter_["and"][1]["date"]["before"]
                 pages = [p for p in pages if (p["properties"].get(QUALIFIED_AT) or {}).get("date")
                          and start <= p["properties"][QUALIFIED_AT]["date"]["start"] < end]
+            elif filter_.get("property") == "Date Contacted":
+                day = filter_["date"]["equals"]
+                pages = [p for p in pages if ((p["properties"].get("Date Contacted") or {}).get("date") or {}).get("start", "")[:10] == day]
             elif "or" in filter_:
                 handles = {f["rich_text"]["equals"] for f in filter_["or"]}
                 pages = [p for p in pages if candidate_from_page(p)["instagram_handle"] in handles]
@@ -388,6 +392,8 @@ class FakeNotion:
         self.writes.append((id_, json))
         if id_ == "counter":
             self.counter = json["properties"]["Priority Score"]["number"]
+        elif id_ in {"contact_counter", "3f8d6e71-8d27-812e-b0d5-d2a0ea4f3004"}:
+            self.contacted_count = json["properties"]["Priority Score"]["number"]
         elif "/data_sources/" in url:
             self.schema.update({k: {"type": next(iter(v))} for k, v in json["properties"].items()})
         else:
@@ -414,6 +420,32 @@ class IntegrationTests(unittest.TestCase):
 
     def sync(self, now=NOW, settings=SETTINGS):
         return sync_counter(self.notion, settings, "stage", "counter", now=now, state_path=self.path)
+
+    def contact_sync(self, now=NOW):
+        return sync_counter(self.notion, SETTINGS, "stage", "counter", now=now,
+                            state_path=self.path, contacted_counter_id="contact_counter")
+
+    def test_contacted_today_counts_first_messages_not_follow_ups(self):
+        self.assertEqual(self.contact_sync(), 22)
+        self.assertEqual(self.notion.contacted_count, 0)
+        for id_ in ("p0", "p1"):
+            self.notion.pages[id_] = transition(self.notion.pages[id_], "Contacted", NOW + timedelta(minutes=2))
+        self.assertEqual(self.contact_sync(NOW + timedelta(minutes=4)), 22)
+        self.assertEqual(self.notion.contacted_count, 2)
+        self.notion.pages["p0"] = transition(self.notion.pages["p0"], "Replied", NOW + timedelta(minutes=5))
+        self.notion.pages["p1"]["properties"]["Follow-Up Count"] = {"type": "number", "number": 2}
+        self.assertEqual(self.contact_sync(NOW + timedelta(minutes=6)), 22)
+        self.assertEqual(self.notion.contacted_count, 2)
+        self.assertEqual(self.contact_sync(NOW + timedelta(days=1)), 0)
+        self.assertEqual(self.notion.contacted_count, 0)
+
+    def test_contacted_today_deduplicates_profiles(self):
+        self.contact_sync()
+        for id_ in ("p0", "p1"):
+            self.notion.pages[id_] = transition(self.notion.pages[id_], "Contacted", NOW + timedelta(minutes=2))
+        self.notion.pages["p1"]["properties"]["Verified Profile URL"]["url"] = "https://m.instagram.com/P0/?utm_source=ig"
+        self.contact_sync(NOW + timedelta(minutes=4))
+        self.assertEqual(self.notion.contacted_count, 1)
 
     def test_forward_cutover_keeps_legacy_in_notion_and_starts_at_zero(self):
         old = prospect("oldready", qualified=False)

@@ -113,7 +113,16 @@ Follow-up edits to Notes, Location, Gym and similar context preserve existing
 approval and credit. Invalid Ready to Send approvals move to Needs Research.
 Restoring a completed Stage cannot reactivate approval: request AI Queue and obtain
 a fresh successful AI decision before earning new credit.
-The target remains 50 and the existing minimal Notion UI is preserved.
+The qualification target remains 50. A second `Today` counter shows the
+number of unique Instagram profiles whose `Date Contacted` equals the current
+Europe/London calendar day, out of 35. This counts first DMs only; follow-up
+changes and later reply/application stages do not count again.
+
+The contacted counter is stored in the same database as a `SYSTEM_COUNTER`
+row. Its page ID defaults to `3f8d6e71-8d27-812e-b0d5-d2a0ea4f3004`
+(override with `NOTION_CONTACTED_COUNTER_PAGE_ID`). The existing
+two-minute `unlxck-counter.timer` refreshes both counters after deployment,
+with no new timer or Notion property needed.
 
 Before running this revision in production, follow
 [the additive migration and Hetzner rollout instructions](docs/daily-counter-rollout.md).
