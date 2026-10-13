@@ -392,7 +392,7 @@ class FakeNotion:
         self.writes.append((id_, json))
         if id_ == "counter":
             self.counter = json["properties"]["Priority Score"]["number"]
-        elif id_ == "contact_counter":
+        elif id_ in {"contact_counter", "3f8d6e71-8d27-812e-b0d5-d2a0ea4f3004"}:
             self.contacted_count = json["properties"]["Priority Score"]["number"]
         elif "/data_sources/" in url:
             self.schema.update({k: {"type": next(iter(v))} for k, v in json["properties"].items()})
