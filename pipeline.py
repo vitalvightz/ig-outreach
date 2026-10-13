@@ -39,6 +39,10 @@ DAILY_COUNTER_PAGE_ID = os.getenv(
     "NOTION_DAILY_COUNTER_PAGE_ID",
     "3f3d6e71-8d27-8165-b1a2-e5d137d1c172",
 )
+CONTACTED_COUNTER_PAGE_ID = os.getenv(
+    "NOTION_CONTACTED_COUNTER_PAGE_ID",
+    "3f8d6e71-8d27-812e-b0d5-d2a0ea4f3004",
+)
 
 
 def _normalize_notion_id(value: str | None) -> str:
@@ -139,7 +143,8 @@ def _today_utc_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
 
 def _update_daily_progress_counter(session, settings, *, now=None, stage_property_id=None):
     stage_property_id = stage_property_id or _resolve_stage_property_id(session, settings)
-    return sync_counter(session, settings, stage_property_id, DAILY_COUNTER_PAGE_ID, now=now)
+    return sync_counter(session, settings, stage_property_id, DAILY_COUNTER_PAGE_ID,
+                        now=now, contacted_counter_id=CONTACTED_COUNTER_PAGE_ID)
 
 
 def _ready_row_needs_repair(page: dict[str, Any], *, now: datetime | None = None) -> bool:
