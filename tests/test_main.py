@@ -9,20 +9,20 @@ class OutreachLogicTests(unittest.TestCase):
     def test_rejects_expired_explicit_upcoming_fight(self):
         athlete = {"personalised_dm_angle": "JUDGEMENT DAY Saturday September 26 2026 National Stadium Dublin upcoming fight poster"}
         issue = fight_date_issue(athlete, today=date(2026, 10, 8))
-        self.assertEqual(issue[0], "Rejected")
+        self.assertEqual(issue[0], "Needs Research")
         self.assertIn("26 September 2026", issue[1])
 
     def test_rejects_stale_locked_in_draft(self):
         athlete = {"personalised_dm_angle": "LOCKED IN 26TH SEPT 2026 Bowliers Trafford Park"}
-        self.assertEqual(fight_date_issue(athlete, draft="saw you've got Bowliers locked in", today=date(2026, 10, 8))[0], "Rejected")
+        self.assertEqual(fight_date_issue(athlete, draft="saw you've got Bowliers locked in", today=date(2026, 10, 8))[0], "Needs Research")
 
     def test_expired_month_year_fight_is_rejected(self):
         athlete = {"personalised_dm_angle": "upcoming fight September 2026"}
-        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Rejected")
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Needs Research")
 
     def test_numeric_short_year_fight_is_rejected(self):
         athlete = {"personalised_dm_angle": "LOCKED IN 26/09/26 fight card"}
-        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Rejected")
+        self.assertEqual(fight_date_issue(athlete, today=date(2026, 10, 8))[0], "Needs Research")
 
     def test_unanchored_relative_fight_needs_research(self):
         athlete = {"personalised_dm_angle": "2 weeks out world championships"}
@@ -109,7 +109,7 @@ class OutreachLogicTests(unittest.TestCase):
         athlete = {"personalised_dm_angle":
                    "upcoming fight post published on 8 October 2026 says bout on 26 September 2026"}
         issue = fight_date_issue(athlete, today=date(2026, 10, 9))
-        self.assertEqual(issue[0], "Rejected")
+        self.assertEqual(issue[0], "Needs Research")
         self.assertIn("26 September 2026", issue[1])
 
     def test_full_yearless_event_still_requires_confirmation(self):
@@ -168,7 +168,7 @@ class OutreachLogicTests(unittest.TestCase):
         self.assertEqual(fight_date_issue(
             athlete, approach="B",
             draft="M1: Hey boxer, saw you've got a fight coming up.",
-            today=date(2026, 10, 10))[0], "Rejected")
+            today=date(2026, 10, 10))[0], "Needs Research")
 
     def test_unverified_upcoming_event_can_use_separate_recent_training(self):
         athlete = {"personalised_dm_angle":
@@ -230,6 +230,42 @@ class OutreachLogicTests(unittest.TestCase):
         for vague in ("training hard", "looks serious", "great profile", "generic boxing gym"):
             with self.subTest(vague=vague):
                 self.assertFalse(has_independent_non_event_hook(vague))
+
+    def test_billy_named_coach_and_gym_evidence_passes_independent_hook(self):
+        note = (
+            "Billy Jarmolinski, a Doncaster super bantamweight trained by Gary Mundy "
+            "at the Athletic Boxing Club in Skellow, beat Tracey Webber by stoppage "
+            "on 25 July 2026, possible Central Area title bout with Samantha Lightfoot"
+        )
+        self.assertTrue(has_independent_non_event_hook(note))
+        self.assertIsNone(fight_date_issue(
+            {"personalised_dm_angle": note},
+            draft="Hey Billy, saw you worked with Gary Mundy at Athletic Boxing Club.",
+            approach="A", today=date(2026, 10, 17),
+        ))
+
+    def test_expired_upcoming_date_without_independent_hook_is_research_not_refusal(self):
+        issue = fight_date_issue(
+            {"personalised_dm_angle": "Upcoming fight on 25 July 2026."},
+            today=date(2026, 10, 17),
+        )
+        self.assertEqual(issue[0], "Needs Research")
+        self.assertIn("25 July 2026", issue[1])
+
+    def test_expired_fight_with_dated_named_gym_can_use_approach_a(self):
+        note = ("Upcoming fight 25 July 2026; trained by Gary Mundy at "
+                "Athletic Boxing Club on 20 July 2026.")
+        self.assertIsNone(fight_date_issue(
+            {"personalised_dm_angle": note},
+            draft="Hey Billy, saw you worked with Gary Mundy.",
+            approach="A", today=date(2026, 10, 17),
+        ))
+        issue = fight_date_issue(
+            {"personalised_dm_angle": note},
+            draft="Hey Billy, saw you've got an upcoming fight.",
+            approach="B", today=date(2026, 10, 17),
+        )
+        self.assertEqual(issue[0], "Needs Research")
 
     def test_preflight_requires_public_personalisation(self):
         candidate = {

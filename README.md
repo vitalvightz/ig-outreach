@@ -14,7 +14,7 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 
 1. Add `Candidate`.
 2. Paste the exact Instagram profile link into `Verified Profile URL`. Do not type or guess the username.
-3. Add one genuine recent public `Personalised DM Angle`.
+3. Add one genuine, specific and publicly verifiable `Personalised DM Angle` (e.g. a dated result, named coach/gym, or training post). An upcoming fight is not required.
 4. Optionally add `Source`.
 5. Visually confirm the profile is real/active, appears 18+, and consistently trains in boxing.
 6. The worker extracts the exact username from the copied profile URL and writes `Instagram Handle` automatically.
@@ -32,7 +32,7 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 - Qualifies/ranks the prospect from the supplied evidence.
 - Chooses Approach A or B.
 - Writes `Priority Score`, `AI Qualification Reason`, `Outreach Approach`, and `Draft DM`.
-- Sets Stage to `Needs Research`, `Ready to Send`, or `Rejected`.
+- Sets Stage to `Needs Research`, `Ready to Send`, or `Screened Out`. `Rejected` is reserved for a genuine athlete refusal after human outreach.
 - Never sends Instagram DMs.
 - Never changes `Contacted` or any later human-owned stage.
 
@@ -44,10 +44,12 @@ Notion is the single source of truth. Google Sheets is no longer part of the wor
 - `AI Queue` — manual trigger to ask AI to re-check a corrected prospect.
 - `Needs Research` — more/better public evidence is required.
 - `Ready to Send` — AI-qualified and drafted; human must verify before sending.
-- `Rejected` — unsuitable for current outreach unless the founder overrides.
+- `Screened Out` — AI finds the profile genuinely ineligible for athlete outreach.
+- `Review Hold` — founder/manual review; not an AI queue stage.
 
 ### Human stages after outreach
 
+- `Rejected` — athlete explicitly declined; never an automated screening result.
 - `Contacted`
 - `Replied`
 - `Applied`
@@ -63,6 +65,20 @@ The automation must not invent athlete facts, results, injuries, fight dates, gy
 A typed or guessed Instagram username is not sufficient verification. New prospects must include a direct Instagram profile URL copied from the real profile. Invalid, non-profile, or missing Instagram URLs are held at `Needs Research` and are not sent to the AI.
 
 Cold Instagram sends remain human-only.
+
+## Personalisation and qualification
+
+Approach **A (Private Beta)** may use a verified, named coach or gym affiliation,
+a dated completed boxing result, a specific training post, or another supported
+boxing hook. A future fight is **not** required. If an affiliation is documented
+in an older report, word the message accurately as a past association rather
+than asserting it still holds today.
+
+Approach **B (Camp Priority)** requires a verified present camp or confirmed
+future bout with a full date. A speculative/expired fight invalidates the
+fight hook, **not** independent coach/gym/result evidence. Ineligible profiles
+stay Screened Out; insufficient research stays Needs Research. The AI receipt
+gate still applies; manually changing Stage cannot qualify an athlete.
 
 ## Required GitHub secrets
 

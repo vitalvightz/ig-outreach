@@ -74,7 +74,9 @@ QUALIFICATION
 - Do not invent a need for UNLXCK, a training problem, or a likely pain point to justify contact.
 - UK athletes are preferred, but strong international candidates can qualify.
 - Follower count, fame, purse, and whether they won or lost are not qualification criteria.
-- A genuine recent public detail must exist before a DM can be drafted.
+- A genuine, specific, date-anchored or clearly active public boxing detail must
+  exist before a DM can be drafted. A verified named gym/coach association can be
+  a Private Beta hook without a future fight or a recent competitive result.
 - Evidence can be any ONE of these eight independent categories. An upcoming
   fight is NOT required for Approach A:
   1. RECENT RESULT: named bout, opponent, tournament, award or title, clearly
@@ -83,19 +85,33 @@ QUALIFICATION
      generic claim that they regularly train.
   3. UPCOMING FIGHT: this specific boxer is confirmed competing and the full
      calendar date is supplied; no unverified event-card inference.
-  4. CURRENT GYM: named gym with a public indication of current membership or
-     training there. Do not require an upcoming fight or a competition date.
-  5. COACH/TEAM: named coach or team with publicly indicated current affiliation.
-     Merely tagging a coach or listing a historic coach is not proof.
+  4. CURRENT GYM / GYM AFFILIATION: a named boxing gym with dated public evidence linking
+     this boxer to training there. Do not require an upcoming fight or result.
+  5. COACH/TEAM AFFILIATION: a named coach or team with dated public evidence
+     linking the boxer to that coach/team. A mere tag or ambiguous shared name
+     is not proof. Do not demand the literal word "currently" in a credible
+     recent report; if the affiliation may have changed, word the DM as a
+     documented past association rather than claiming they still train there.
   6. RECENT TRAINING POST: a specific boxing drill, padwork, sparring, session or
      achievement with a stated recent post date or clearly recent context.
   7. RETURN FROM LAYOFF: explicit public statement of the boxer returning to
      training or competing after time away; do not invent injury details.
   8. WEIGHT-CLASS MOVE: explicit public statement of changing weight classes;
      avoid inferred moves from weigh-in photos or different fight weights.
-- For ongoing gym/coach/team membership, a current explicitly supported
-  affiliation can qualify without an exact event date. Recent results and posts
-  need a credible time anchor. Undated ambiguous old claims need more research.
+- For gym/coach/team affiliation, accept dated reporting that specifically
+  associates the boxer with a named gym/coach; do not demand an explicit
+  declaration of present-tense membership. Express the hook in appropriately
+  dated terms. Recent results and posts need a credible time anchor; undated
+  ambiguous old claims still need more research.
+- Assess independent hooks before rejecting a weak/upcoming-fight claim. A
+  speculative, cancelled or expired fight date invalidates that fight hook ONLY.
+  If another independently supported hook exists, choose Approach A and draft
+  from that. Do not make a missing/upcoming date veto a verified gym, coach,
+  training post or completed result. Never infer that a speculative fight is set.
+- For example: a boxer documented as trained by Gary Mundy at Athletic Boxing
+  Club in July 2026 with a named July bout has usable Private Beta evidence in
+  October 2026, even if a possible next opponent has no confirmed fight date.
+  Do not assert the historical affiliation is still current without evidence.
 - Past results remain Approach A. An expired fight listing is not an upcoming
   fight and does not, by itself, make the person ineligible; if another
   independently verified recent hook exists, use that instead.
@@ -277,7 +293,8 @@ _INDEPENDENT_HOOK_RE = re.compile(
     r"(?:back|return(?:ed|ing)?)\s+(?:to|in)\s+(?:boxing|training|the gym|the ring)\b|"
     r"(?:moving|moved|switch(?:ed|ing)?)\s+(?:up|down|to)\s+"
     r"(?:\d{2,3}\s*(?:kg|lb|lbs)|(?:light|middle|welter|heavy|feather)\w*weight)\b|"
-    r"(?:train(?:s|ing)?\s+(?:at|with)|currently\s+(?:at|with)|"
+    r"(?:train(?:s|ed|ing)?\s+(?:at|with|under)|trained\s+by|"
+    r"working\s+with|worked\s+with|currently\s+(?:at|with)|"
     r"coach(?:ed)?\s+by|signed\s+(?:with|to)|joined\s+team)\s+"
     r"[@A-Za-z][\w.@\s-]{2,45}"
     r")\b",
@@ -416,10 +433,13 @@ def fight_date_issue(
     if upcoming and not future and past:
         stale = past[0]
         if any(stale.day == 1 and _MONTH_YEAR_RE.search(p) for p in re.split(r"\s*\+\s*|[;\n]", evidence)):
-            return "Rejected", f"Rejected: purported upcoming fight was in {stale:%B %Y}, before today ({today:%d %B %Y})."
-        return "Rejected", f"Rejected: purported upcoming fight was on {stale:%d %B %Y}, before today ({today:%d %B %Y})."
+            return "Needs Research", (f"Needs research: purported upcoming fight was in {stale:%B %Y}, "
+                                      f"before today ({today:%d %B %Y}). Supply a separate verified hook.")
+        return "Needs Research", (f"Needs research: purported upcoming fight was on {stale:%d %B %Y}, "
+                                  f"before today ({today:%d %B %Y}). Supply a separate verified hook.")
     if past and claims_future and not future:
-        return "Rejected", f"Rejected: draft describes a past fight as upcoming (today: {today:%d %B %Y})."
+        return "Needs Research", (f"Needs research: draft describes a past fight as upcoming "
+                                  f"(today: {today:%d %B %Y}). Use a verified independent hook.")
     if upcoming and not future and not current_camp:
         return "Needs Research", "Needs research: supply the verified full upcoming fight date (day, month, year), not relative timing."
     if generic_event_without_athlete and future:
@@ -663,11 +683,13 @@ def qualify_and_draft(
         # A failed draft should be regenerated by the AI once, rather than
         # incorrectly asking the human to research an already verified fact.
         instructions += (
-            "\nA previous DRAFT (not source research) failed validation: "
+            "\nRe-evaluate the previous response (do not change source research): "
             + correction
             + "\nRegenerate using the existing verified evidence only. "
-              "Keep the full fight date internally, express the date in M1 "
-              "naturally, never invent a new fight or unsupported evidence."
+              "Only when using a verified future fight as the hook, retain its "
+              "full date internally and express it naturally in M1. For a gym, "
+              "coach or completed-result Approach A hook, never demand a future "
+              "fight date. Do not invent unsupported evidence."
         )
     response = client.responses.create(
         model=settings.openai_model,
