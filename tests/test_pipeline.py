@@ -7,7 +7,7 @@ from qualification import new_receipt, receipt_properties
 from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
-    REJECTED,
+    SCREENED_OUT,
     _entry_complete,
     _is_empty_row,
     _ready_row_needs_repair,
@@ -32,7 +32,7 @@ class PipelineStageTests(unittest.TestCase):
     def test_rejected_when_not_eligible(self):
         self.assertEqual(
             stage_from_ai({"eligible": False, "evidence_sufficient": True}),
-            REJECTED,
+            SCREENED_OUT,
         )
 
     def test_completely_empty_row_is_skipped(self):
