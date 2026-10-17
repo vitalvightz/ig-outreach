@@ -18,6 +18,7 @@ from qualification import (
 
 from core import (
     copy_ready_dm,
+    has_independent_non_event_hook,
     Settings,
     fight_date_issue,
     _notion_headers,
@@ -31,7 +32,8 @@ from core import (
 AI_QUEUE = "AI Queue"
 NEEDS_RESEARCH = "Needs Research"
 READY_TO_SEND = "Ready to Send"
-REJECTED = "Rejected"
+REJECTED = "Rejected"  # Reserved for genuine athlete refusals (human-owned).
+SCREENED_OUT = "Screened Out"
 DEFAULT_SPORT = "Boxing"
 STAGE_PROPERTY_LABELS = ("Stage", "Stage (AI Fills First)")
 DAILY_TARGET = 50
@@ -258,7 +260,7 @@ def stage_from_ai(result: dict[str, Any]) -> str:
     # A positively identified non-athlete must not be sent back for an
     # irrelevant fight date just because research is also incomplete.
     if result.get("eligible") is not True:
-        return REJECTED
+        return SCREENED_OUT
     if result.get("evidence_sufficient") is not True:
         return NEEDS_RESEARCH
     return READY_TO_SEND
@@ -534,10 +536,10 @@ def run_outreach() -> int:
                     settings,
                     candidate,
                     stage_property_id=stage_property_id,
-                    stage=REJECTED,
+                    stage=SCREENED_OUT,
                     reason=reason,
                 )
-                print(f"{REJECTED}: {label} — {reason}")
+                print(f"{SCREENED_OUT}: {label} — {reason}")
                 processed += 1
                 continue
 
@@ -556,6 +558,25 @@ def run_outreach() -> int:
                 continue
 
             result = qualify_and_draft(client, settings, candidate)
+            # A single model recheck may recover credible independent evidence
+            # that the first decision overlooked. It cannot bypass eligibility.
+            if (stage_from_ai(result) != READY_TO_SEND
+                    and has_independent_non_event_hook(candidate["personalised_dm_angle"])
+                    and candidate["sport"] == DEFAULT_SPORT):
+                first_reason = result.get("qualification_reason", "")
+                print(f"Rechecking independent hook for {label} (no automatic approval)")
+                result = qualify_and_draft(
+                    client, settings, candidate,
+                    correction=(
+                        "Previous decision withheld qualification. Independently evaluate "
+                        "the supplied named coach/gym, dated completed results, and training "
+                        "evidence, even if a separate future fight is unconfirmed or expired. "
+                        "A documented dated affiliation is a usable Approach A hook without "
+                        "asserting current membership. Reaffirm ineligibility if this is a "
+                        "coach-only profile, false identity, or missing credible boxer evidence. "
+                        f"Previous decision reason: {first_reason[:450]}"
+                    ),
+                )
             timing_issue = fight_date_issue(
                 candidate, draft=result["draft_dm"], approach=result["outreach_approach"],
             )
@@ -582,6 +603,26 @@ def run_outreach() -> int:
                         "The research may already be sufficient; requeue to AI Queue "
                         "for another draft rather than changing verified facts.",
                     )
+            if (timing_issue and result.get("eligible") is True
+                    and result.get("evidence_sufficient") is True
+                    and has_independent_non_event_hook(candidate["personalised_dm_angle"])
+                    and result.get("outreach_approach") == "B"):
+                # A failed Camp Priority fight hook can be replaced with a
+                # verified Approach A hook, subject to another AI assessment.
+                result = qualify_and_draft(
+                    client, settings, candidate,
+                    correction=(
+                        "The proposed Camp Priority (B) message failed the fight-date "
+                        f"safety gate: {timing_issue[1]}. If the notes genuinely support "
+                        "a separate gym, coach, training or completed-result detail, "
+                        "qualify via Private Beta (A) and draft ONLY about that detail. "
+                        "Otherwise report Needs Research; do not invent evidence."
+                    ),
+                )
+                timing_issue = fight_date_issue(
+                    candidate, draft=result["draft_dm"],
+                    approach=result["outreach_approach"],
+                )
             if timing_issue:
                 stage, reason = timing_issue
                 _mark_terminal(
