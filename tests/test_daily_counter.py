@@ -53,7 +53,7 @@ def transition(page, name, now=NOW):
 
 class QualificationTests(unittest.TestCase):
     def test_ineligible_coach_only_is_rejected_not_missing_date_research(self):
-        self.assertEqual(stage_from_ai({"eligible": False, "evidence_sufficient": False}), "Rejected")
+        self.assertEqual(stage_from_ai({"eligible": False, "evidence_sufficient": False}), "Screened Out")
         self.assertEqual(stage_from_ai({"eligible": True, "evidence_sufficient": False}), "Needs Research")
         self.assertEqual(stage_from_ai({"eligible": True, "evidence_sufficient": True}), "Ready to Send")
 
@@ -791,6 +791,94 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("24th", saved["Draft DM"]["rich_text"][0]["text"]["content"])
         self.assertIsNotNone(receipt(self.notion.pages[page["id"]]))
 
+    def test_worker_reconsiders_independent_coach_hook_without_bypassing_ai(self):
+        page = prospect(qualified=False, stage="AI Queue")
+        page["properties"]["Personalised DM Angle"] = text(
+            "Billy Jarmolinski trained by Gary Mundy at Athletic Boxing Club in "
+            "July 2026, beat Tracey Webber 25 July 2026, possible future title bout"
+        )
+        self.notion = FakeNotion([page])
+        denied = {"eligible": True, "evidence_sufficient": False, "priority_score": 25,
+                  "qualification_reason": "Coach and gym details do not explicitly establish current affiliation",
+                  "outreach_approach": "", "draft_dm": ""}
+        approved = {"eligible": True, "evidence_sufficient": True, "priority_score": 45,
+                    "qualification_reason": "Named July coach/gym and completed bout",
+                    "outreach_approach": "A",
+                    "draft_dm": "M1: Hey Billy, saw you worked with Gary Mundy.\\n"
+                                "M2: We're giving fighters early access to Unlxck.\\n"
+                                "M3: Want the details?"}
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[page]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft", side_effect=[denied, approved]) as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        self.assertEqual(ai.call_count, 2)
+        self.assertEqual(self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"],
+                         "Ready to Send")
+        self.assertIsNotNone(receipt(self.notion.pages[page["id"]]))
+
+    def test_independent_hook_second_opinion_cannot_override_ineligible_athlete(self):
+        page = prospect(qualified=False, stage="AI Queue")
+        page["properties"]["Personalised DM Angle"] = text(
+            "Gym owner's profile says trained by Gary Mundy, but person is a coach only "
+            "and does not train or compete as a boxer"
+        )
+        self.notion = FakeNotion([page])
+        denied = {"eligible": False, "evidence_sufficient": False, "priority_score": 0,
+                  "qualification_reason": "Coach-only profile, not an active boxer",
+                  "outreach_approach": "", "draft_dm": ""}
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[page]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft", side_effect=[denied, denied]) as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        self.assertEqual(ai.call_count, 2)
+        saved = self.notion.pages[page["id"]]["properties"]
+        self.assertEqual(saved["stage"]["select"]["name"], "Screened Out")
+        self.assertEqual(saved["Draft DM"]["rich_text"], [])
+        self.assertIsNone(receipt(self.notion.pages[page["id"]]))
+
+    def test_worker_falls_back_from_unsafe_b_to_verified_gym_a(self):
+        page = prospect(qualified=False, stage="AI Queue")
+        page["properties"]["Personalised DM Angle"] = text(
+            "Upcoming fight on 25 July 2026; trained by Gary Mundy at Athletic "
+            "Boxing Club in July 2026"
+        )
+        self.notion = FakeNotion([page])
+        bad = {"eligible": True, "evidence_sufficient": True, "priority_score": 80,
+               "qualification_reason": "Upcoming fight", "outreach_approach": "B",
+               "draft_dm": "M1: Hey Billy, saw your fight coming up.\\n"
+                           "M2: We're giving fighters early access to Unlxck.\\n"
+                           "M3: Want the details?"}
+        good = dict(bad, outreach_approach="A",
+                    draft_dm="M1: Hey Billy, saw you worked with Gary Mundy.\\n"
+                             "M2: We're giving fighters early access to Unlxck.\\n"
+                             "M3: Want the details?")
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[page]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft", side_effect=[bad, good]) as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        self.assertEqual(ai.call_count, 2)
+        self.assertEqual(self.notion.pages[page["id"]]["properties"]["stage"]["select"]["name"],
+                         "Ready to Send")
+        self.assertIn("Gary Mundy", self.notion.pages[page["id"]]["properties"]["Draft DM"]["rich_text"][0]["text"]["content"])
+
     def test_worker_does_not_loop_if_date_wording_remains_invalid(self):
         page = prospect(qualified=False, stage="AI Queue")
         page["properties"]["Personalised DM Angle"] = text(
@@ -830,7 +918,7 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn(RECEIPT, properties)
         self.assertIsNotNone(receipt(self.notion.pages[page["id"]]))
         result.update(eligible=False, draft_dm="")
-        self.assertEqual(update_ai_result(self.notion, SETTINGS, candidate, result, stage_property_id="stage"), "Rejected")
+        self.assertEqual(update_ai_result(self.notion, SETTINGS, candidate, result, stage_property_id="stage"), "Screened Out")
         self.assertIsNone(receipt(self.notion.pages[page["id"]]))
 
     def test_identical_ai_retry_preserves_timestamp_and_queue_recheck_replaces_it(self):
