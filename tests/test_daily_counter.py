@@ -804,8 +804,8 @@ class IntegrationTests(unittest.TestCase):
         approved = {"eligible": True, "evidence_sufficient": True, "priority_score": 45,
                     "qualification_reason": "Named July coach/gym and completed bout",
                     "outreach_approach": "A",
-                    "draft_dm": "M1: Hey Billy, saw you worked with Gary Mundy.\\n"
-                                "M2: We're giving fighters early access to Unlxck.\\n"
+                    "draft_dm": "M1: Hey Billy, saw you worked with Gary Mundy.\n"
+                                "M2: We're giving fighters early access to Unlxck.\n"
                                 "M3: Want the details?"}
         with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
              patch("pipeline.NotionSession", return_value=self.notion), \
@@ -857,12 +857,12 @@ class IntegrationTests(unittest.TestCase):
         self.notion = FakeNotion([page])
         bad = {"eligible": True, "evidence_sufficient": True, "priority_score": 80,
                "qualification_reason": "Upcoming fight", "outreach_approach": "B",
-               "draft_dm": "M1: Hey Billy, saw your fight coming up.\\n"
-                           "M2: We're giving fighters early access to Unlxck.\\n"
+               "draft_dm": "M1: Hey Billy, saw your fight coming up.\n"
+                           "M2: We're giving fighters early access to Unlxck.\n"
                            "M3: Want the details?"}
         good = dict(bad, outreach_approach="A",
-                    draft_dm="M1: Hey Billy, saw you worked with Gary Mundy.\\n"
-                             "M2: We're giving fighters early access to Unlxck.\\n"
+                    draft_dm="M1: Hey Billy, saw you worked with Gary Mundy.\n"
+                             "M2: We're giving fighters early access to Unlxck.\n"
                              "M3: Want the details?")
         with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
              patch("pipeline.NotionSession", return_value=self.notion), \
