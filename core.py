@@ -85,7 +85,7 @@ QUALIFICATION
      generic claim that they regularly train.
   3. UPCOMING FIGHT: this specific boxer is confirmed competing and the full
      calendar date is supplied; no unverified event-card inference.
-  4. GYM AFFILIATION: a named boxing gym with dated public evidence linking
+  4. CURRENT GYM / GYM AFFILIATION: a named boxing gym with dated public evidence linking
      this boxer to training there. Do not require an upcoming fight or result.
   5. COACH/TEAM AFFILIATION: a named coach or team with dated public evidence
      linking the boxer to that coach/team. A mere tag or ambiguous shared name
