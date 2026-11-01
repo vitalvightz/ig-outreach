@@ -21,6 +21,7 @@ from core import (
     Settings,
     fight_date_issue,
     _notion_headers,
+    _plain_text,
     _rich_text_value,
     candidate_from_page,
     instagram_handle_from_profile_url,
@@ -240,14 +241,18 @@ def _stage_value(page: dict[str, Any], stage_property_id: str) -> str:
 def _duplicate_owners(pages: list[dict[str, Any]], stage_property_id: str) -> dict[str, dict[str, Any]]:
     """Keep the furthest-progressed profile; the oldest record wins stage ties."""
     priority = {
-        "Activated": 9, "Reserve": 8, "Accepted": 7, "Applied": 6,
-        "Replied": 5, "Contacted": 4, "Inactive": 4,
-        "Review Hold": 3, "Rejected": 3, "Screened Out": 3,
-        "Ready to Send": 2, "Needs Research": 1,
+        "Activated": 10, "Reserve": 9, "Accepted": 8, "Applied": 7,
+        "Replied": 6, "Contacted": 5, "Inactive": 5,
+        "Review Hold": 4, "Rejected": 4, "Screened Out": 4,
+        "Ready to Send": 3, "Needs Research": 2, "AI Queue": 1,
     }
     owners: dict[str, dict[str, Any]] = {}
     for page in pages:
         if page.get("archived") or page.get("in_trash"):
+            continue
+        # A duplicate previously held by this guard cannot become the new owner.
+        if (_stage_value(page, stage_property_id) == "Review Hold"
+                and _plain_text(page["properties"].get("AI Qualification Reason")).startswith("Duplicate @")):
             continue
         handle = instagram_handle_from_profile_url(candidate_from_page(page)["verified_profile_url"])
         if not handle:
@@ -449,12 +454,20 @@ def run_outreach() -> int:
         pages = targeted_pages
         print(f"Targeted prospects pulled from Notion: {len(pages)}")
 
-    # Never qualify a profile unless the complete existing pipeline was checked.
+    # Check all Ready to Send records, even when the AI queue is empty.
     try:
-        owners = _duplicate_owners(query_all(session, settings), stage_property_id) if pages else {}
+        all_pages = query_all(session, settings)
+        owners = _duplicate_owners(all_pages, stage_property_id)
     except Exception as exc:
         print(f"ERROR: duplicate lookup failed; no prospects processed: {exc}", file=sys.stderr)
         return 1
+
+    queued_ids = {page["id"] for page in pages}
+    if targeted_pages is None:
+        pages = [*pages, *(
+            page for page in all_pages
+            if page["id"] not in queued_ids and _stage_value(page, stage_property_id) == READY_TO_SEND
+        )]
 
     processed = 0
     counter_failed = False
@@ -481,6 +494,9 @@ def run_outreach() -> int:
                 failed += 1
                 print(f"ERROR: duplicate {label}: {exc}", file=sys.stderr)
             continue
+
+        if candidate["page_id"] not in queued_ids:
+            continue  # Previously approved Ready to Send; duplicate check only.
 
         if _stage_value(page, stage_property_id) == READY_TO_SEND and _ready_row_needs_repair(page):
             try:
