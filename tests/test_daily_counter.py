@@ -780,9 +780,11 @@ class IntegrationTests(unittest.TestCase):
              patch("pipeline.query_ai_queue", return_value=[page]), \
              patch("pipeline.OpenAI"), \
              patch("pipeline.qualify_and_draft", side_effect=[result, corrected]) as ai, \
+             patch("core.datetime", wraps=datetime) as clock, \
              patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
                                         "COUNTER_ONLY": "false",
                                         "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            clock.now.return_value = datetime(2026, 10, 10, tzinfo=timezone.utc)
             self.assertEqual(run_outreach(), 0)
         self.assertEqual(ai.call_count, 2)
         self.assertIn("correction", ai.call_args.kwargs)
@@ -808,15 +810,37 @@ class IntegrationTests(unittest.TestCase):
              patch("pipeline.query_ai_queue", return_value=[page]), \
              patch("pipeline.OpenAI"), \
              patch("pipeline.qualify_and_draft", side_effect=[bad, bad]) as ai, \
+             patch("core.datetime", wraps=datetime) as clock, \
              patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
                                         "COUNTER_ONLY": "false",
                                         "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            clock.now.return_value = datetime(2026, 10, 10, tzinfo=timezone.utc)
             self.assertEqual(run_outreach(), 0)
         self.assertEqual(ai.call_count, 2)
         props = self.notion.pages[page["id"]]["properties"]
         self.assertEqual(props["stage"]["select"]["name"], "Needs Research")
         self.assertIn("AI draft", props["AI Qualification Reason"]["rich_text"][0]["text"]["content"])
         self.assertIsNone(receipt(self.notion.pages[page["id"]]))
+
+    def test_worker_holds_duplicate_before_ai_and_preserves_contact(self):
+        original = prospect("old", handle="fighter", stage="Contacted")
+        fresh = prospect("new", handle="FIGHTER", qualified=False, stage="AI Queue")
+        fresh["properties"]["Verified Profile URL"]["url"] = "https://m.instagram.com/fighter/?igsh=abc"
+        self.notion = FakeNotion([original, fresh])
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[fresh]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft") as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        ai.assert_not_called()
+        self.assertEqual(self.notion.pages["new"]["properties"]["stage"]["select"]["name"], "Review Hold")
+        self.assertEqual(self.notion.pages["old"]["properties"]["stage"]["select"]["name"], "Contacted")
+        self.assertIn("existing", self.notion.pages["new"]["properties"]["AI Qualification Reason"]["rich_text"][0]["text"]["content"])
 
     def test_worker_atomic_qualification_and_failure_clear(self):
         page = prospect(qualified=False, stage="AI Queue")

@@ -8,6 +8,7 @@ from pipeline import (
     NEEDS_RESEARCH,
     READY_TO_SEND,
     REJECTED,
+    _duplicate_owners,
     _entry_complete,
     _is_empty_row,
     _ready_row_needs_repair,
@@ -133,6 +134,40 @@ class PipelineStageTests(unittest.TestCase):
 
 
 
+
+
+class DuplicateProfileTests(unittest.TestCase):
+    @staticmethod
+    def prospect(id, url, stage="", **flags):
+        return {
+            "id": id, "url": f"https://www.notion.so/{id}", **flags,
+            "properties": {
+                "Verified Profile URL": {"type": "url", "url": url},
+                "Stage": {"id": "stage-id", "type": "select",
+                          "select": {"name": stage} if stage else None},
+            },
+        }
+
+    def test_existing_contacted_beats_new_ready_despite_url_variants(self):
+        old = self.prospect("old", "https://www.instagram.com/Fighter/?igsh=abc#x", "Contacted")
+        new = self.prospect("new", "https://instagram.com/fighter/", "Ready to Send")
+        self.assertIs(_duplicate_owners([old, new], "stage-id")["fighter"], old)
+
+    def test_oldest_wins_same_stage(self):
+        old = self.prospect("old", "https://instagram.com/fighter", "Ready to Send")
+        new = self.prospect("new", "https://www.instagram.com/FIGHTER/", "Ready to Send")
+        self.assertIs(_duplicate_owners([old, new], "stage-id")["fighter"], old)
+
+    def test_existing_terminal_status_blocks_fresh_blank_record(self):
+        old = self.prospect("old", "https://instagram.com/fighter", "Screened Out")
+        new = self.prospect("new", "https://instagram.com/fighter/", "")
+        self.assertIs(_duplicate_owners([old, new], "stage-id")["fighter"], old)
+
+    def test_archived_and_invalid_profiles_are_ignored(self):
+        archived = self.prospect("old", "https://instagram.com/fighter/", "Accepted", archived=True)
+        current = self.prospect("new", "https://instagram.com/fighter/", "")
+        invalid = self.prospect("post", "https://instagram.com/p/abc/", "Accepted")
+        self.assertEqual(_duplicate_owners([archived, current, invalid], "stage-id"), {"fighter": current})
 
 
 class InstagramVerificationTests(unittest.TestCase):
