@@ -842,6 +842,62 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.notion.pages["old"]["properties"]["stage"]["select"]["name"], "Contacted")
         self.assertIn("existing", self.notion.pages["new"]["properties"]["AI Qualification Reason"]["rich_text"][0]["text"]["content"])
 
+    def test_approved_ready_duplicates_are_held_even_with_empty_queue(self):
+        old = prospect("old", handle="fighter")
+        new = prospect("new", handle="fighter")
+        self.notion = FakeNotion([old, new])
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft") as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+            self.assertEqual(run_outreach(), 0)  # No second-pass owner reversal.
+        ai.assert_not_called()
+        self.assertEqual(self.notion.pages["old"]["properties"]["stage"]["select"]["name"], "Ready to Send")
+        self.assertEqual(self.notion.pages["new"]["properties"]["stage"]["select"]["name"], "Review Hold")
+        self.assertEqual([id_ for id_, _ in self.notion.writes], ["new"])
+        self.assertIsNotNone(receipt(self.notion.pages["old"]))
+
+    def test_approved_ready_without_duplicate_is_not_reprocessed(self):
+        existing = prospect("only", handle="fighter")
+        self.notion = FakeNotion([existing])
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft") as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 0)
+        ai.assert_not_called()
+        self.assertEqual(self.notion.writes, [])
+        self.assertIsNotNone(receipt(self.notion.pages["only"]))
+
+    def test_duplicate_scan_failure_leaves_queue_untouched(self):
+        fresh = prospect("fresh", handle="fighter", qualified=False, stage="AI Queue")
+        self.notion = FakeNotion([fresh])
+        self.notion.fail_query = True
+        with patch("pipeline.Settings.from_env", return_value=SETTINGS), \
+             patch("pipeline.NotionSession", return_value=self.notion), \
+             patch("pipeline._resolve_stage_property_id", return_value="stage"), \
+             patch("pipeline.query_ai_queue", return_value=[fresh]), \
+             patch("pipeline.OpenAI"), \
+             patch("pipeline.qualify_and_draft") as ai, \
+             patch.dict("os.environ", {"OUTREACH_EXTERNAL_COUNTER": "true",
+                                        "COUNTER_ONLY": "false",
+                                        "OUTREACH_COUNTER_CUTOVER_AT": NOW.isoformat()}):
+            self.assertEqual(run_outreach(), 1)
+        ai.assert_not_called()
+        self.assertEqual(self.notion.writes, [])
+        self.assertEqual(self.notion.pages["fresh"]["properties"]["stage"]["select"]["name"], "AI Queue")
+
     def test_worker_atomic_qualification_and_failure_clear(self):
         page = prospect(qualified=False, stage="AI Queue")
         self.notion.pages = {page["id"]: page}
