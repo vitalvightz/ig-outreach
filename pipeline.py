@@ -9,7 +9,7 @@ from typing import Any
 import requests
 from openai import OpenAI
 
-from daily_counter import NotionSession, apply_properties, ensure_schema, sync_counter
+from daily_counter import NotionSession, apply_properties, ensure_schema, query_all, sync_counter
 from qualification import (
     RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
     reconcile, receipt_properties, research_fingerprint, today_bounds,
@@ -23,6 +23,7 @@ from core import (
     _notion_headers,
     _rich_text_value,
     candidate_from_page,
+    instagram_handle_from_profile_url,
     preflight_reason,
     qualify_and_draft,
     verified_profile_reason,
@@ -236,6 +237,30 @@ def _stage_value(page: dict[str, Any], stage_property_id: str) -> str:
     return ""
 
 
+def _duplicate_owners(pages: list[dict[str, Any]], stage_property_id: str) -> dict[str, dict[str, Any]]:
+    """Keep the furthest-progressed profile; the oldest record wins stage ties."""
+    priority = {
+        "Activated": 9, "Reserve": 8, "Accepted": 7, "Applied": 6,
+        "Replied": 5, "Contacted": 4, "Inactive": 4,
+        "Review Hold": 3, "Rejected": 3, "Screened Out": 3,
+        "Ready to Send": 2, "Needs Research": 1,
+    }
+    owners: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        if page.get("archived") or page.get("in_trash"):
+            continue
+        handle = instagram_handle_from_profile_url(candidate_from_page(page)["verified_profile_url"])
+        if not handle:
+            continue
+        handle = handle.lower()
+        owner = owners.get(handle)
+        if owner is None or priority.get(_stage_value(page, stage_property_id), 0) > priority.get(
+            _stage_value(owner, stage_property_id), 0
+        ):
+            owners[handle] = page
+    return owners
+
+
 def _target_page_if_requested(
     session: requests.Session,
     settings: Settings,
@@ -424,6 +449,13 @@ def run_outreach() -> int:
         pages = targeted_pages
         print(f"Targeted prospects pulled from Notion: {len(pages)}")
 
+    # Never qualify a profile unless the complete existing pipeline was checked.
+    try:
+        owners = _duplicate_owners(query_all(session, settings), stage_property_id) if pages else {}
+    except Exception as exc:
+        print(f"ERROR: duplicate lookup failed; no prospects processed: {exc}", file=sys.stderr)
+        return 1
+
     processed = 0
     counter_failed = False
     skipped = 0
@@ -432,6 +464,23 @@ def run_outreach() -> int:
     for page in pages:
         candidate = candidate_from_page(page)
         label = candidate["candidate"] or candidate["instagram_handle"] or candidate["page_id"]
+
+        handle = instagram_handle_from_profile_url(candidate["verified_profile_url"])
+        owner = owners.get(handle.lower()) if handle else None
+        if owner and owner["id"] != candidate["page_id"]:
+            try:
+                _mark_terminal(
+                    session, settings, candidate, stage_property_id=stage_property_id,
+                    stage="Review Hold",
+                    reason=f"Duplicate @{handle}: existing {owner['url']} "
+                           f"(Stage: {_stage_value(owner, stage_property_id) or 'blank'}). Do not contact.",
+                )
+                processed += 1
+                print(f"Review Hold: duplicate {label} — retained {owner['id']}")
+            except Exception as exc:
+                failed += 1
+                print(f"ERROR: duplicate {label}: {exc}", file=sys.stderr)
+            continue
 
         if _stage_value(page, stage_property_id) == READY_TO_SEND and _ready_row_needs_repair(page):
             try:
