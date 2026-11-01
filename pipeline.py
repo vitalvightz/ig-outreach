@@ -464,10 +464,10 @@ def run_outreach() -> int:
 
     queued_ids = {page["id"] for page in pages}
     if targeted_pages is None:
-        pages.extend(
+        pages = [*pages, *(
             page for page in all_pages
             if page["id"] not in queued_ids and _stage_value(page, stage_property_id) == READY_TO_SEND
-        )
+        )]
 
     processed = 0
     counter_failed = False
