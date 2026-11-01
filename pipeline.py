@@ -472,7 +472,7 @@ def run_outreach() -> int:
                 _mark_terminal(
                     session, settings, candidate, stage_property_id=stage_property_id,
                     stage="Review Hold",
-                    reason=f"Duplicate @{handle}: existing {owner['url']} "
+                    reason=f"Duplicate @{handle}: existing {owner.get('url') or owner['id']} "
                            f"(Stage: {_stage_value(owner, stage_property_id) or 'blank'}). Do not contact.",
                 )
                 processed += 1
