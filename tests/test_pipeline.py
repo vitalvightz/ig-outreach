@@ -163,6 +163,24 @@ class DuplicateProfileTests(unittest.TestCase):
         new = self.prospect("new", "https://instagram.com/fighter/", "")
         self.assertIs(_duplicate_owners([old, new], "stage-id")["fighter"], old)
 
+    def test_ai_queue_beats_blank_stage(self):
+        blank = self.prospect("blank", "https://instagram.com/fighter/")
+        queued = self.prospect("queued", "https://instagram.com/fighter", "AI Queue")
+        self.assertIs(_duplicate_owners([blank, queued], "stage-id")["fighter"], queued)
+
+    def test_duplicate_hold_never_outranks_retained_ready(self):
+        ready = self.prospect("ready", "https://instagram.com/fighter/", "Ready to Send")
+        held = self.prospect("held", "https://instagram.com/fighter/", "Review Hold")
+        held["properties"]["AI Qualification Reason"] = {
+            "type": "rich_text", "rich_text": [{"plain_text": "Duplicate @fighter: existing ready"}],
+        }
+        self.assertIs(_duplicate_owners([ready, held], "stage-id")["fighter"], ready)
+
+    def test_manual_review_hold_still_blocks_ready(self):
+        held = self.prospect("held", "https://instagram.com/fighter/", "Review Hold")
+        ready = self.prospect("ready", "https://instagram.com/fighter/", "Ready to Send")
+        self.assertIs(_duplicate_owners([held, ready], "stage-id")["fighter"], held)
+
     def test_archived_and_invalid_profiles_are_ignored(self):
         archived = self.prospect("old", "https://instagram.com/fighter/", "Accepted", archived=True)
         current = self.prospect("new", "https://instagram.com/fighter/", "")
