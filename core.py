@@ -681,9 +681,12 @@ def qualify_and_draft(
                 "strict": True,
             }
         },
-        max_output_tokens=1200,
+        max_output_tokens=4000,
         store=False,
     )
+    if response.status == "incomplete":
+        reason = response.incomplete_details.reason if response.incomplete_details else "unknown"
+        raise RuntimeError(f"OpenAI response incomplete: {reason}")
     result = json.loads(response.output_text)
     validate_ai_result(result)
     result["priority_score"] = deterministic_priority_score(candidate, result)
