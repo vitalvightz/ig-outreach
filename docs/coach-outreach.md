@@ -17,9 +17,12 @@ statuses, views and records were preserved; no live drafts were generated.
 Only `To Contact` coaches with no `Last Contacted` date, a supplied Coach / Gym
 name and a nonblank personalisation are drafted. Any personalisation text is
 accepted without profile, sport, qualification, research or evidence checks.
-The short prompt asks for a human, natural opening: first name only, one specific
-observation from the research, no em dashes, brackets, placeholders, stats or extra
-background. When timing matters, use supplied calendar wording naturally rather
+The short prompt uses the athlete prompt's writing principles: research notes
+are not message copy; extract the strongest natural hook, prefer the real-world
+fact over describing the post, mention it once and move on. It uses first names
+and excludes em dashes, brackets, credentials and invented facts. The athlete
+prompt and its qualification rules are unchanged. When timing matters, use
+supplied calendar wording naturally rather
 than elapsed years, without guessing dates or calculating them from durations.
 There are no word-count rules, keyword lists or style retries. One model call
 returns structured greeting/observation text, and code appends the fixed offer:
