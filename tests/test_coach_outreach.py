@@ -232,13 +232,22 @@ class CoachTests(unittest.TestCase):
                     SimpleNamespace(status="completed", output_text=json.dumps({
                         "greeting_name": greeting, "observation": observation})),
                     SimpleNamespace(status="completed", output_text=json.dumps({
-                        "greeting_name": "Wayne", "observation": "saw you were at the boxing show"})),
+                        "greeting_name": "Wayne", "observation": "saw you at Top Tier Boxing"})),
                 ]
                 self.client.responses.create.reset_mock()
                 draft = coach.draft_dm(self.client, self.settings, "Wayne Smith",
                                        "Attended the Top Tier Boxing Grand Finale at X Leisure Centre, live on DAZN")
-                self.assertEqual(draft, f"Hey Wayne, saw you were at the boxing show. {coach.INTRO}")
+                self.assertEqual(draft, f"Hey Wayne, saw you at Top Tier Boxing. {coach.INTRO}")
                 self.assertEqual(self.client.responses.create.call_count, 2)
+
+    def test_short_identifying_event_name_is_preserved_without_retry(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text=json.dumps({
+                "greeting_name": "Wayne", "observation": "saw you at Top Tier Boxing"}))
+        draft = coach.draft_dm(self.client, self.settings, "Wayne Smith",
+                               "Attended Top Tier Boxing Grand Finale at X Leisure Centre, live on DAZN")
+        self.assertEqual(draft, f"Hey Wayne, saw you at Top Tier Boxing. {coach.INTRO}")
+        self.client.responses.create.assert_called_once()
 
     def test_short_natural_observation_is_not_padded(self):
         self.client.responses.create.return_value = SimpleNamespace(

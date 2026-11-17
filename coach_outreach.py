@@ -23,12 +23,14 @@ guess a name from a handle. For an organisation or unclear name use 'there'.
 The observation must be ONE simple conversational observation of 4–9 words,
 without a greeting, introduction, invitation, quotation marks or line breaks.
 Keep it casual, like a quick Instagram message. Do not summarise the research.
-Mention the basic thing that happened, not every detail about it. Leave out full
-event/show titles, sponsors, broadcasters, venues, locations, dates and billing.
-Never copy a poster or announcement into the opening. Omit details rather than
-cramming them in, and do not pad a short natural observation to fill the limit.
+Keep ONE recognisable detail: the short supplied event, gym, person or topic name
+that makes the observation specific. Do not replace a known name with vague
+wording like 'the boxing show', 'the event' or 'your gym'. Shorten announcement
+billing to its recognisable name; leave out taglines, sponsors, broadcasters,
+venues, locations and dates. Never copy a poster into the opening. Remove the
+extra description, not the identifying detail. Do not pad the word count.
 Example research: 'attended the Top Tier Boxing Grand Finale at X Leisure Centre,
-live on DAZN'. Simple opening: 'saw you were at the boxing show'.
+live on DAZN'. Simple opening: 'saw you at Top Tier Boxing'.
 Example research: 'posted a video breaking down footwork drills'. Simple opening:
 'saw your video on footwork drills'. No invented praise or extra commentary.
 FIRST NAME ONLY in the greeting. Never include their surname, full name, titles
@@ -99,7 +101,8 @@ def draft_dm(client, settings, name, angle):
         instructions = INSTRUCTIONS + (
             "\nThe last opening failed style checks. Use only the first word of the "
             "supplied personal name (or 'there'), 4–9 simple observation words, no repeated "
-            "names, no event titles/venues/broadcasters, and no robotic phrases."
+            "names, keep the short identifying name, omit event billing/venues/broadcasters, "
+            "and no robotic phrases."
         )
     raise RuntimeError("Coach opening failed style checks after one retry")
 
