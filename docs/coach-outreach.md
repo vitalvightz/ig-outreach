@@ -17,14 +17,19 @@ statuses, views and records were preserved; no live drafts were generated.
 Only `To Contact` coaches with no `Last Contacted` date, a supplied Coach / Gym
 name and a nonblank personalisation are drafted. Any personalisation text is
 accepted without profile, sport, qualification, research or evidence checks.
-The model selects one supplied detail and rewrites it as a natural 5–12-word
+The model selects one supplied detail and rewrites it as a simple 4–9-word
 observation. Recent fights, coaching content, gym activity and achievements take
 priority when supplied; a gym reference is enough otherwise. It treats the angle
 as research rather than copy, avoids credential lists and robotic relationship
 phrases, and never assumes multiple fighters. Structured output includes only
 the first word of a clear personal name (or `there` for an organisation/unclear
-name) and the observation. Code checks greeting, word count and prohibited
-phrases, with one bounded style retry, and appends exactly:
+name) and the observation. It leaves out full event titles, broadcasters,
+venues, sponsors, locations and dates rather than compressing announcement copy.
+For example, a long boxing-show announcement becomes `saw you were at the boxing
+show`; a coaching-video note becomes `saw your coaching clips`. Personal names
+appear only once, as a first-name greeting. Code checks greeting, word count,
+repeated personal names and prohibited broadcast/robotic phrases, with one
+bounded style retry, and appends exactly:
 
 > We’re inviting a few combat coaches to get early access to Unlxck. We’re building tools to help coaches keep track of their fighters’ training, recovery and fight prep in one place. It’s free to get involved and you’ll have a say in what we build for coaches. Want me to send you the details?
 

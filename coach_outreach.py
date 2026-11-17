@@ -20,8 +20,19 @@ INSTRUCTIONS = """Write a natural Instagram DM opening from the supplied researc
 Return greeting_name and observation as structured output. For a clear personal
 name, greeting_name must be its first word only, preserving its spelling. Never
 guess a name from a handle. For an organisation or unclear name use 'there'.
-The observation must be ONE short conversational observation of 5–12 words,
+The observation must be ONE simple conversational observation of 4–9 words,
 without a greeting, introduction, invitation, quotation marks or line breaks.
+Keep it casual, like a quick Instagram message. Do not summarise the research.
+Mention the basic thing that happened, not every detail about it. Leave out full
+event/show titles, sponsors, broadcasters, venues, locations, dates and billing.
+Never copy a poster or announcement into the opening. Omit details rather than
+cramming them in, and do not pad a short natural observation to fill the limit.
+Example research: 'attended the Top Tier Boxing Grand Finale at X Leisure Centre,
+live on DAZN'. Simple opening: 'saw you were at the boxing show'.
+Example research: 'posted a video breaking down footwork drills'. Simple opening:
+'saw your video on footwork drills'. No invented praise or extra commentary.
+FIRST NAME ONLY in the greeting. Never include their surname, full name, titles
+or credentials anywhere in the opening. Never repeat their name in the observation.
 Treat Personalised DM Angle as research, not wording to copy. Prefer a supplied
 recent fight, coaching content, gym activity or achievement. Never claim recency
 unless supplied. If only a gym is known, reference that gym naturally. Pick ONE
@@ -75,14 +86,20 @@ def draft_dm(client, settings, name, angle):
         greeting = opening["greeting_name"].strip()
         observation = " ".join(opening["observation"].split()).rstrip(".!?")
         if (greeting in {name.split()[0], "there"}
-                and 5 <= len(observation.split()) <= 12
-                and not re.search(r"associated with|affiliated with|I noticed your association",
+                and 4 <= len(observation.split()) <= 9
+                and (greeting == "there" or not any(
+                    re.search(r"\b" + re.escape(part) + r"\b", observation, re.IGNORECASE)
+                    for part in name.split()))
+                and not re.search(r"associated with|affiliated with|I noticed your association|"
+                                  r"live on|broadcast|televised|\bDAZN\b|Sky Sports|TNT Sports|"
+                                  r"\bESPN\b|leisure cent(?:re|er)",
                                   observation, re.IGNORECASE)):
             return f"Hey {greeting}, {observation}. {INTRO}"
         # Retry only formatting failures, never research/qualification checks.
         instructions = INSTRUCTIONS + (
             "\nThe last opening failed style checks. Use only the first word of the "
-            "supplied personal name (or 'there'), 5–12 observation words and no robotic phrases."
+            "supplied personal name (or 'there'), 4–9 simple observation words, no repeated "
+            "names, no event titles/venues/broadcasters, and no robotic phrases."
         )
     raise RuntimeError("Coach opening failed style checks after one retry")
 
