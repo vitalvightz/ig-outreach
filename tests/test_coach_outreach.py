@@ -219,6 +219,60 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(args["text"]["format"]["type"], "json_schema")
         self.assertNotIn(coach.INTRO, args["input"])
 
+    def test_long_openings_and_repeated_names_retry_to_simple_first_name_opening(self):
+        for greeting, observation in (
+            ("Wayne Smith", "saw you were at the boxing show"),
+            ("Wayne", "saw Wayne Smith at the boxing show"),
+            ("Wayne", "saw you at the Top Tier Boxing Grand Finale live on DAZN"),
+        ):
+            with self.subTest(greeting=greeting, observation=observation):
+                self.client.responses.create.side_effect = [
+                    SimpleNamespace(status="completed", output_text=json.dumps({
+                        "greeting_name": greeting, "observation": observation})),
+                    SimpleNamespace(status="completed", output_text=json.dumps({
+                        "greeting_name": "Wayne", "observation": "saw you at Top Tier Boxing"})),
+                ]
+                self.client.responses.create.reset_mock()
+                draft = coach.draft_dm(self.client, self.settings, "Wayne Smith",
+                                       "Attended the Top Tier Boxing Grand Finale at X Leisure Centre, live on DAZN")
+                self.assertEqual(draft, f"Hey Wayne, saw you at Top Tier Boxing. {coach.INTRO}")
+                self.assertEqual(self.client.responses.create.call_count, 2)
+
+    def test_short_identifying_event_name_is_preserved_without_retry(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text=json.dumps({
+                "greeting_name": "Wayne", "observation": "saw you at Top Tier Boxing"}))
+        draft = coach.draft_dm(self.client, self.settings, "Wayne Smith",
+                               "Attended Top Tier Boxing Grand Finale at X Leisure Centre, live on DAZN")
+        self.assertEqual(draft, f"Hey Wayne, saw you at Top Tier Boxing. {coach.INTRO}")
+        self.client.responses.create.assert_called_once()
+
+    def test_specific_openings_work_across_research_types_without_keyword_exceptions(self):
+        cases = (
+            ("Posted a detailed video about footwork drills", "saw your video on footwork drills"),
+            ("Head coach at Bideford Boxing Club", "saw you’re coaching at Bideford Boxing Club"),
+            ("Won the Northern coaching award", "saw you won the Northern coaching award"),
+            ("Interviewed on DAZN about coaching footwork", "saw your DAZN interview about footwork"),
+            ("Started coaching sessions at Riverside Leisure Centre", "saw you’re coaching at Riverside Leisure Centre"),
+        )
+        for research, observation in cases:
+            with self.subTest(research=research):
+                self.client.responses.create.reset_mock()
+                self.client.responses.create.return_value = SimpleNamespace(
+                    status="completed", output_text=json.dumps({
+                        "greeting_name": "Wayne", "observation": observation}))
+                draft = coach.draft_dm(self.client, self.settings, "Wayne Smith", research)
+                self.assertEqual(draft, f"Hey Wayne, {observation}. {coach.INTRO}")
+                self.client.responses.create.assert_called_once()
+
+    def test_short_natural_observation_is_not_padded(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text=json.dumps({
+                "greeting_name": "Wayne", "observation": "saw your coaching clips"}))
+        draft = coach.draft_dm(self.client, self.settings, "Wayne Smith", "Posted coaching clips")
+        self.assertEqual(draft, f"Hey Wayne, saw your coaching clips. {coach.INTRO}")
+        self.client.responses.create.assert_called_once()
+
     def test_prompt_change_refreshes_worker_owned_draft_once_preserving_manual_copy(self):
         self.run_sync()
         with patch("coach_outreach.INTRO", coach.INTRO + " Updated offer."):
