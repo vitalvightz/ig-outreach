@@ -403,6 +403,9 @@ class FakeNotion:
 
 class IntegrationTests(unittest.TestCase):
     def setUp(self):
+        coaches = patch("pipeline.sync_coaches", return_value=0)
+        coaches.start()
+        self.addCleanup(coaches.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path = str(Path(self.tmp.name) / "state.sqlite3")

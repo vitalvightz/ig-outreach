@@ -99,6 +99,8 @@ DRY_RUN=true python pipeline.py
 - `core.py` — shared configuration, Notion parsing, AI prompt/schema and validation.
 - `pipeline.py` — stage ownership, Notion queue processing and writes.
 - `smoke_test.py` — read-only Notion/OpenAI integration validation.
+- `coach_outreach.py` — separate personalised coach drafts in the existing poll;
+  see [behaviour and deployment requirements](docs/coach-outreach.md).
 
 ## Model
 
