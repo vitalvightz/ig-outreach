@@ -187,28 +187,6 @@ class CoachTests(unittest.TestCase):
         self.client.responses.create.assert_not_called()
         self.assertEqual(self.writes, [])
 
-    def test_robotic_opening_retries_once_then_saves_natural_opening(self):
-        good = self.client.responses.create.return_value
-        bad = SimpleNamespace(status="completed", output_text=json.dumps({
-            "greeting_name": "Wayne Smith", "observation": "you are associated with Golden Gloves ABC"}))
-        self.client.responses.create.side_effect = [bad, good]
-        self.run_sync()
-        self.assertEqual(self.client.responses.create.call_count, 2)
-        self.assertEqual(self.draft(), f"Hey Wayne, saw you run good sessions. {coach.INTRO}")
-        self.run_sync()
-        self.assertEqual(self.client.responses.create.call_count, 2)
-
-    def test_invalid_opening_never_written_and_retry_is_bounded(self):
-        for observation in ("nice gym", "saw you are affiliated with Golden Gloves ABC",
-                            "I noticed your association with Golden Gloves ABC",
-                            "one two three four five six seven eight nine ten eleven twelve thirteen"):
-            self.client.responses.create.reset_mock()
-            self.client.responses.create.return_value = SimpleNamespace(
-                status="completed", output_text=json.dumps({"greeting_name": "Wayne", "observation": observation}))
-            self.assertEqual(self.run_sync(), 1)
-            self.assertEqual(self.client.responses.create.call_count, 2)
-            self.assertEqual(self.writes, [])
-
     def test_organisation_uses_neutral_greeting_with_fixed_offer(self):
         self.client.responses.create.return_value = SimpleNamespace(
             status="completed", output_text=json.dumps({
@@ -219,24 +197,23 @@ class CoachTests(unittest.TestCase):
         self.assertEqual(args["text"]["format"]["type"], "json_schema")
         self.assertNotIn(coach.INTRO, args["input"])
 
-    def test_long_openings_and_repeated_names_retry_to_simple_first_name_opening(self):
-        for greeting, observation in (
-            ("Wayne Smith", "saw you were at the boxing show"),
-            ("Wayne", "saw Wayne Smith at the boxing show"),
-            ("Wayne", "saw you at the Top Tier Boxing Grand Finale live on DAZN"),
-        ):
-            with self.subTest(greeting=greeting, observation=observation):
-                self.client.responses.create.side_effect = [
-                    SimpleNamespace(status="completed", output_text=json.dumps({
-                        "greeting_name": greeting, "observation": observation})),
-                    SimpleNamespace(status="completed", output_text=json.dumps({
-                        "greeting_name": "Wayne", "observation": "saw you at Top Tier Boxing"})),
-                ]
-                self.client.responses.create.reset_mock()
-                draft = coach.draft_dm(self.client, self.settings, "Wayne Smith",
-                                       "Attended the Top Tier Boxing Grand Finale at X Leisure Centre, live on DAZN")
-                self.assertEqual(draft, f"Hey Wayne, saw you at Top Tier Boxing. {coach.INTRO}")
-                self.assertEqual(self.client.responses.create.call_count, 2)
+    def test_full_greeting_is_reduced_to_first_name_without_another_ai_call(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text=json.dumps({
+                "greeting_name": "Julian Anderson", "observation": "saw your post about your Muay Thai debut"}))
+        draft = coach.draft_dm(self.client, self.settings, "Julian Anderson",
+                               "Muay Thai debut at Prime Fight Promotions (PFN28) after 2.5 years of training")
+        self.assertEqual(draft, f"Hey Julian, saw your post about your Muay Thai debut. {coach.INTRO}")
+        self.client.responses.create.assert_called_once()
+
+    def test_incomplete_or_empty_generation_does_not_write_or_retry(self):
+        for status, output in (("incomplete", ""), ("completed", json.dumps({
+                "greeting_name": "Wayne", "observation": ""}))):
+            self.client.responses.create.reset_mock()
+            self.client.responses.create.return_value = SimpleNamespace(status=status, output_text=output)
+            self.assertEqual(self.run_sync(), 1)
+            self.client.responses.create.assert_called_once()
+            self.assertEqual(self.writes, [])
 
     def test_short_identifying_event_name_is_preserved_without_retry(self):
         self.client.responses.create.return_value = SimpleNamespace(
