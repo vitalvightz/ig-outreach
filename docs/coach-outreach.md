@@ -23,13 +23,14 @@ priority when supplied; a gym reference is enough otherwise. It treats the angle
 as research rather than copy, avoids credential lists and robotic relationship
 phrases, and never assumes multiple fighters. Structured output includes only
 the first word of a clear personal name (or `there` for an organisation/unclear
-name) and the observation. It keeps the short recognisable event, gym or topic
-name, while dropping event billing, broadcasters, venues, sponsors, locations and
-dates. For example, `Top Tier Boxing Grand Finale at X Leisure Centre, live on
-DAZN` becomes `saw you at Top Tier Boxing`, not a vague reference to `the boxing
-show`. A footwork-video note becomes `saw your video on footwork drills`. Personal names
+name) and the observation. The general rule is one relevant fact, expressed
+conversationally, with enough identifying context to recognise it. It removes
+secondary information rather than copying the whole research or becoming vague.
+This applies equally to events, gym activity, coaching content and achievements.
+There are no event-, venue- or broadcaster-specific keyword bans: a detail can
+stay when it is the point of the observation. Personal names
 appear only once, as a first-name greeting. Code checks greeting, word count,
-repeated personal names and prohibited broadcast/robotic phrases, with one
+repeated personal names and robotic relationship phrases, with one
 bounded style retry, and appends exactly:
 
 > We’re inviting a few combat coaches to get early access to Unlxck. We’re building tools to help coaches keep track of their fighters’ training, recovery and fight prep in one place. It’s free to get involved and you’ll have a say in what we build for coaches. Want me to send you the details?
