@@ -18,7 +18,9 @@ Only `To Contact` coaches with no `Last Contacted` date, a supplied Coach / Gym
 name and a nonblank personalisation are drafted. Any personalisation text is
 accepted without profile, sport, qualification, research or evidence checks.
 The short prompt asks for a human, natural opening: first name only, one specific
-observation from the research, no brackets, placeholders, stats or extra background.
+observation from the research, no em dashes, brackets, placeholders, stats or extra
+background. When timing matters, use supplied calendar wording naturally rather
+than elapsed years, without guessing dates or calculating them from durations.
 There are no word-count rules, keyword lists or style retries. One model call
 returns structured greeting/observation text, and code appends the fixed offer:
 
