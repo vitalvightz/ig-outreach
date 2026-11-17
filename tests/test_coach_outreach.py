@@ -39,7 +39,8 @@ class CoachTests(unittest.TestCase):
         self.schema = {name: {"type": "rich_text"} for name in ("Personalised DM Angle", "Draft DM")}
         self.client = Mock()
         self.client.responses.create.return_value = SimpleNamespace(
-            status="completed", output_text="saw you run good sessions")
+            status="completed", output_text=json.dumps({
+                "greeting_name": "Wayne", "observation": "saw you run good sessions"}))
         self.writes = []
         api = patch("coach_outreach.api", side_effect=self.api)
         api.start()
@@ -70,7 +71,7 @@ class CoachTests(unittest.TestCase):
 
     def test_generate_once_then_regenerate_changed_angle_without_qualification(self):
         self.assertEqual(self.run_sync(), 0)
-        self.assertEqual(self.draft(), f"Hey Wayne Smith, saw you run good sessions. {coach.INTRO}")
+        self.assertEqual(self.draft(), f"Hey Wayne, saw you run good sessions. {coach.INTRO}")
         self.run_sync()
         self.page["properties"]["Notes"] = text("unrelated change")
         self.run_sync()
@@ -79,7 +80,7 @@ class CoachTests(unittest.TestCase):
         self.run_sync()
         self.assertEqual(self.client.responses.create.call_count, 2)
         args = self.client.responses.create.call_args.kwargs
-        self.assertEqual(json.loads(args["input"]), {"personalisation": "nice gym"})
+        self.assertEqual(json.loads(args["input"]), {"coach_name": "Wayne Smith", "personalisation": "nice gym"})
         self.assertEqual(args["model"], "existing-model")
         self.assertFalse(args["store"])
 
@@ -123,7 +124,8 @@ class CoachTests(unittest.TestCase):
                     self.path.unlink()
                 def change(**kwargs):
                     self.page["properties"][field] = value
-                    return SimpleNamespace(status="completed", output_text="saw your sessions")
+                    return SimpleNamespace(status="completed", output_text=json.dumps({
+                        "greeting_name": "Wayne", "observation": "saw you run good sessions"}))
                 self.client.responses.create.side_effect = change
                 self.run_sync()
                 self.assertEqual(self.writes, [])
@@ -184,6 +186,51 @@ class CoachTests(unittest.TestCase):
             self.run_sync()
         self.client.responses.create.assert_not_called()
         self.assertEqual(self.writes, [])
+
+    def test_robotic_opening_retries_once_then_saves_natural_opening(self):
+        good = self.client.responses.create.return_value
+        bad = SimpleNamespace(status="completed", output_text=json.dumps({
+            "greeting_name": "Wayne Smith", "observation": "you are associated with Golden Gloves ABC"}))
+        self.client.responses.create.side_effect = [bad, good]
+        self.run_sync()
+        self.assertEqual(self.client.responses.create.call_count, 2)
+        self.assertEqual(self.draft(), f"Hey Wayne, saw you run good sessions. {coach.INTRO}")
+        self.run_sync()
+        self.assertEqual(self.client.responses.create.call_count, 2)
+
+    def test_invalid_opening_never_written_and_retry_is_bounded(self):
+        for observation in ("nice gym", "saw you are affiliated with Golden Gloves ABC",
+                            "I noticed your association with Golden Gloves ABC",
+                            "one two three four five six seven eight nine ten eleven twelve thirteen"):
+            self.client.responses.create.reset_mock()
+            self.client.responses.create.return_value = SimpleNamespace(
+                status="completed", output_text=json.dumps({"greeting_name": "Wayne", "observation": observation}))
+            self.assertEqual(self.run_sync(), 1)
+            self.assertEqual(self.client.responses.create.call_count, 2)
+            self.assertEqual(self.writes, [])
+
+    def test_organisation_uses_neutral_greeting_with_fixed_offer(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            status="completed", output_text=json.dumps({
+                "greeting_name": "there", "observation": "came across your gym in Liverpool"}))
+        draft = coach.draft_dm(self.client, self.settings, "Golden Gloves ABC", "Gym in Liverpool")
+        self.assertEqual(draft, f"Hey there, came across your gym in Liverpool. {coach.INTRO}")
+        args = self.client.responses.create.call_args.kwargs
+        self.assertEqual(args["text"]["format"]["type"], "json_schema")
+        self.assertNotIn(coach.INTRO, args["input"])
+
+    def test_prompt_change_refreshes_worker_owned_draft_once_preserving_manual_copy(self):
+        self.run_sync()
+        with patch("coach_outreach.INTRO", coach.INTRO + " Updated offer."):
+            self.run_sync()
+            self.run_sync()
+            self.assertEqual(self.client.responses.create.call_count, 2)
+            self.assertTrue(self.draft().endswith(" Updated offer."))
+            self.page["properties"]["Draft DM"] = text("My hand-edited message")
+            self.run_sync()
+        self.run_sync()
+        self.assertEqual(self.draft(), "My hand-edited message")
+        self.assertEqual(self.client.responses.create.call_count, 2)
 
 
 class WorkerRoutingTests(unittest.TestCase):
