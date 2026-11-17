@@ -9,6 +9,7 @@ from typing import Any
 import requests
 from openai import OpenAI
 
+from coach_outreach import sync_coaches
 from daily_counter import NotionSession, apply_properties, ensure_schema, query_all, sync_counter
 from qualification import (
     RECEIPT, QUALIFIED_AT, approval_valid, fingerprint, new_receipt, receipt,
@@ -668,6 +669,14 @@ def run_outreach() -> int:
         except Exception as exc:
             failed += 1
             print(f"ERROR: {label}: {exc}", file=sys.stderr)
+
+    # Targeted athlete repair runs must remain scoped to that one athlete.
+    if targeted_pages is None:
+        try:
+            failed += sync_coaches(session, settings, client)
+        except Exception as exc:
+            failed += 1
+            print(f"ERROR: coach outreach failed: {exc}", file=sys.stderr)
 
     if not external_counter:
         try:
