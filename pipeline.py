@@ -671,7 +671,7 @@ def run_outreach() -> int:
             print(f"ERROR: {label}: {exc}", file=sys.stderr)
 
     # Targeted athlete repair runs must remain scoped to that one athlete.
-    if targeted_pages is None:
+    if targeted_pages is None and os.getenv("OUTREACH_COACH_DRAFTS", "").lower() == "true":
         try:
             failed += sync_coaches(session, settings, client)
         except Exception as exc:
