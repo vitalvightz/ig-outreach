@@ -271,7 +271,8 @@ class WorkerRoutingTests(unittest.TestCase):
         for counter, target in ((False, None), (True, None), (False, [])):
             with self.subTest(counter=counter, target=target), ExitStack() as stack:
                 stack.enter_context(patch.dict(os.environ, {"COUNTER_ONLY": str(counter).lower(),
-                                                           "OUTREACH_EXTERNAL_COUNTER": "true"}))
+                                                           "OUTREACH_EXTERNAL_COUNTER": "true",
+                                                           "OUTREACH_COACH_DRAFTS": "true"}))
                 for name, value in (("Settings.from_env", settings), ("NotionSession", Mock()),
                                     ("_resolve_stage_property_id", "stage"), ("ensure_schema", {}),
                                     ("OpenAI", Mock()), ("_target_page_if_requested", target),
@@ -287,7 +288,8 @@ class WorkerRoutingTests(unittest.TestCase):
         from pipeline import run_outreach
         settings = Settings("unused", "unused", "athletes", "existing-model", 100, True)
         with ExitStack() as stack:
-            stack.enter_context(patch.dict(os.environ, {"COUNTER_ONLY": "false", "OUTREACH_EXTERNAL_COUNTER": "false"}))
+            stack.enter_context(patch.dict(os.environ, {"COUNTER_ONLY": "false", "OUTREACH_EXTERNAL_COUNTER": "false",
+                                               "OUTREACH_COACH_DRAFTS": "true"}))
             for name, value in (("Settings.from_env", settings), ("NotionSession", Mock()),
                                 ("_resolve_stage_property_id", "stage"), ("ensure_schema", {}),
                                 ("OpenAI", Mock()), ("_target_page_if_requested", None),
